@@ -19,6 +19,10 @@ class SimpleDecoder(nn.Module):
 
         self._build()
 
+    @property
+    def n_ary(self):
+        return self._n_ary
+
     def _build(self):
         self.lst_c_to_x = nn.ModuleList([nn.Linear(in_features=self._n_ary, out_features=self._n_dim_emb, bias=False) for n in range(self._n_digits)])
 

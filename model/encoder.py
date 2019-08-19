@@ -35,11 +35,14 @@ class SimpleEncoder(nn.Module):
 
         t_h = torch.tanh(self.x_to_h(input_x))
         lst_z = [torch.log(F.softplus(h_to_z(t_h))) for h_to_z in self.lst_h_to_z]
+        lst_prob_c = [F.softmax(t_z, dim=1) for t_z in lst_z]
+        # lst_c = [F.gumbel_softmax(torch.log(t_prob_c), tau=self._tau) for t_prob_c in lst_prob_c]
         lst_c = [F.gumbel_softmax(t_z, tau=self._tau) for t_z in lst_z]
 
         t_c = torch.stack(lst_c, dim=1)
+        t_prob_c = torch.stack(lst_prob_c, dim=1)
 
-        return t_c
+        return t_c, t_prob_c
 
 
 class CodeLengthAwareEncoder(nn.Module):
