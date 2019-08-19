@@ -11,8 +11,6 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from contextlib import ExitStack
-from model.encoder import SimpleEncoder, CodeLengthAwareEncoder
-from sklearn.preprocessing import OneHotEncoder
 
 class AutoEncoder(nn.Module):
 
@@ -22,6 +20,14 @@ class AutoEncoder(nn.Module):
         self._encoder = encoder
         self._decoder = decoder
         self._dtype = dtype
+
+    @property
+    def n_ary(self):
+        return self._encoder._n_ary
+
+    @property
+    def n_digits(self):
+        return self._encoder._n_digits
 
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).type(self._dtype)
