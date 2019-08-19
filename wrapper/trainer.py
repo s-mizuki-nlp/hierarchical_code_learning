@@ -6,158 +6,141 @@ from __future__ import division
 from __future__ import print_function
 
 from typing import Optional, Dict, Tuple
-from contextlib import ExitStack
+from collections import defaultdict
 import numpy as np
 import torch
 from torch import nn
+from torch.utils.data import Dataset, DataLoader
 from torch.nn.modules.loss import _Loss
+from torch.optim import Adam
+import pytorch_lightning as pl
 
 from model.autoencoder import AutoEncoder
 from model.encoder import SimpleEncoder, CodeLengthAwareEncoder
 
-class UnsupervisedTrainer(object):
+class UnsupervisedTrainer(pl.LightningModule):
 
-    def __init__(self, model: AutoEncoder, loss_reconst: _Loss,
-                 optimizer: torch.optim.Optimizer,
+    def __init__(self, dataloader_train: DataLoader,
+                 model: AutoEncoder, loss_reconst: _Loss,
                  loss_mutual_info: Optional[_Loss] = None,
+                 coef_loss_mutual_info: Optional[float] = 1.0,
+                 dataloader_val: Optional[Dataset] = None,
+                 dataloader_test: Optional[Dataset] = None,
+                 learning_rate: Optional[float] = 0.001
                  ):
 
-        self._optimizer = optimizer
+        super(UnsupervisedTrainer, self).__init__()
+
         self._model = model
         self._encoder = model._encoder
         self._decoder = model._decoder
         self._loss_reconst = loss_reconst
         self._loss_mutual_info = loss_mutual_info
-
-    def set_device(self, device):
-        self._device = device
-        self._model.to(self._device)
+        self._coef_loss_mutual_info = coef_loss_mutual_info
+        self._learning_rate = learning_rate
+        self._dataloaders = {
+            "train": dataloader_train,
+            "val": dataloader_val,
+            "test": dataloader_test
+        }
 
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).to(self._device)
 
-    def train_single_step(self, mat_x: np.array, coef_loss_mutual_info: float = 1.0):
+    def configure_optimizers(self):
+        opt = Adam(self.parameters(), lr=self._learning_rate)
+        return opt
 
-        self._optimizer.zero_grad()
+    @pl.data_loader
+    def tng_dataloader(self):
+        return self._dataloaders["train"]
+
+    @pl.data_loader
+    def val_dataloader(self):
+        return self._dataloaders["val"]
+
+    @pl.data_loader
+    def test_dataloader(self):
+        return self._dataloaders["test"]
+
+    def forward(self, x):
+        return self._model.forward(x)
+
+    def training_step(self, data_batch, batch_nb):
 
         # forward computation
-        t_x = self._numpy_to_tensor(mat_x)
-        t_intermediate, t_code_prob, t_x_dash = self._model.forward(t_x, requires_grad=True)
+        t_x = data_batch["embedding"]
+        t_intermediate, t_code_prob, t_x_dash = self._model.forward(t_x)
 
         loss_reconst = self._loss_reconst.forward(t_x_dash, t_x)
 
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
         else:
-            loss_mi = 0.0
+            loss_mi = torch.tensor(0.0, dtype=torch.float32)
 
-        loss = loss_reconst + coef_loss_mutual_info * loss_mi
-        loss.backward()
-        self._optimizer.step()
+        loss = loss_reconst + self._coef_loss_mutual_info * loss_mi
 
         dict_losses = {
             "loss_reconst": float(loss_reconst),
             "mutual_info": float(loss_mi),
-            "loss_total": float(loss)
+            "loss": loss
         }
         return dict_losses
 
-    def _evaluate_code_representation(self, t_code_prob: torch.Tensor) -> Dict[str, float]:
-        return {}
+    def _evaluate_code_stats(self, t_code_prob):
 
-    def evaluate_single_step(self, mat_x: np.array, coef_loss_mutual_info: float = 1.0):
+        n_ary = self._model.n_ary
+        effective_code_length = torch.sum(1.0 - t_code_prob[:,:,0], axis=-1)
+        code_divergence = torch.mean(np.log(n_ary) + torch.sum(t_code_prob * torch.log(t_code_prob), axis=-1), axis=-1)
+
+        metrics = {
+            "val_effective_code_length_mean":torch.mean(effective_code_length),
+            "val_effective_code_length_std":torch.std(effective_code_length),
+            "val_code_divergence":torch.mean(code_divergence)
+        }
+        return metrics
+
+    def validation_step(self, data_batch, batch_nb):
 
         # forward computation without back-propagation
-        t_x = self._numpy_to_tensor(mat_x)
-        t_intermediate, t_code_prob, t_x_dash = self._model.forward(t_x, requires_grad=False)
+        t_x = data_batch["embedding"]
+        t_intermediate, t_code_prob, t_x_dash = self._model.predict(t_x)
 
         loss_reconst = self._loss_reconst.forward(t_x_dash, t_x)
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
         else:
-            loss_mi = 0.0
+            loss_mi = torch.tensor(0.0, dtype=torch.float32)
+
+        loss = loss_reconst + self._coef_loss_mutual_info * loss_mi
 
         metrics = {
-            "loss_reconst": float(loss_reconst),
-            "mutual_info": float(loss_mi),
-            "loss_total": float(loss_reconst) + coef_loss_mutual_info * float(loss_mi)
+            "val_loss_reconst": loss_reconst,
+            "val_mutual_info": loss_mi,
+            "val_loss": loss
         }
-        if t_code_prob is not None:
-            metrics_repr = self._evaluate_code_representation(t_code_prob)
+        if self._loss_mutual_info is not None:
+            metrics_repr = self._evaluate_code_stats(t_code_prob)
             metrics.update(metrics_repr)
 
         return metrics
 
+    def validation_end(self, outputs):
+
+        tqdm_dic = defaultdict(float)
+        for output in outputs:
+            for variable, value in output.items():
+                tqdm_dic[variable] += value
+        n_output = len(outputs)
+        for variable in output.keys():
+            tqdm_dic[variable] /= n_output
+
+        return tqdm_dic
+
 
 class SupervisedCodeLengthTrainer(UnsupervisedTrainer):
-
-    def __init__(self, model: SimpleEncoder, loss_reconst: _Loss,
-                 device,
-                 optimizer: torch.optim.Optimizer,
-                 loss_mutual_info: Optional[_Loss] = None,
-                 loss_code_length: Optional[_Loss] = None):
-
-        super(SupervisedCodeLengthTrainer, self).__init__(model=model, loss_reconst=loss_reconst, device=device,
-                                                          optimizer=optimizer, loss_mutual_info=loss_mutual_info)
-
-        self._loss_code_length = loss_code_length
-
-
-    def train_single_step(self, mat_x: np.array, vec_y: np.array, coef_loss_mutual_info: float = 1.0, coef_loss_supervised: float = 1.0):
-
-        self._optimizer.zero_grad()
-
-        t_x = self._numpy_to_tensor(mat_x)
-        t_y = self._numpy_to_tensor(vec_y)
-
-        # forward computation
-        t_intermediate, t_code_prob, t_x_dash = self._model.forward(t_x, requires_grad=True)
-
-        loss = self._loss_reconst.forward(t_x_dash, t_x)
-
-        if self._loss_mutual_info is not None:
-            loss_mi = self._loss_mutual_info(t_code_prob)
-            loss = loss + coef_loss_mutual_info * loss_mi
-
-        loss_supervised = self._loss_code_length.forward(t_code_prob, t_y)
-        loss = loss + coef_loss_supervised * loss_supervised
-
-        loss.backward()
-        self._optimizer.step()
-
+    pass
 
 class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
-
-    def __init__(self, model: SimpleEncoder, loss_reconst: _Loss,
-                 device,
-                 optimizer: torch.optim.Optimizer,
-                 loss_mutual_info: Optional[_Loss] = None,
-                 loss_hypernym_relation: Optional[_Loss] = None):
-
-        super(SupervisedHypernymyRelationTrainer, self).__init__(model=model, loss_reconst=loss_reconst, device=device,
-                                                                 optimizer=optimizer, loss_mutual_info=loss_mutual_info)
-
-        self._loss_hypernym_relation = loss_hypernym_relation
-
-
-    def train_single_step(self, mat_x: np.array, mat_y: np.array, coef_loss_mutual_info: float = 1.0, coef_loss_supervised: float = 1.0):
-
-        self._optimizer.zero_grad()
-
-        t_x = self._numpy_to_tensor(mat_x)
-        t_y = self._numpy_to_tensor(mat_y)
-
-        # forward computation
-        t_intermediate, t_code_prob, t_x_dash = self._model.forward(t_x, requires_grad=True)
-
-        loss = self._loss_reconst.forward(t_x_dash, t_x)
-
-        if self._loss_mutual_info is not None:
-            loss_mi = self._loss_mutual_info(t_code_prob)
-            loss = loss + coef_loss_mutual_info * loss_mi
-
-        loss_supervised = self._loss_hypernym_relation.forward(t_code_prob, t_y)
-        loss = loss + coef_loss_supervised * loss_supervised
-
-        loss.backward()
-        self._optimizer.step()
+    pass
