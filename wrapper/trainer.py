@@ -7,6 +7,7 @@ from __future__ import print_function
 
 from typing import Optional, Dict, Tuple
 from collections import defaultdict
+import pickle
 import numpy as np
 import torch
 from torch import nn
@@ -20,12 +21,13 @@ from model.encoder import SimpleEncoder, CodeLengthAwareEncoder
 
 class UnsupervisedTrainer(pl.LightningModule):
 
-    def __init__(self, dataloader_train: DataLoader,
+    def __init__(self,
                  model: AutoEncoder, loss_reconst: _Loss,
                  loss_mutual_info: Optional[_Loss] = None,
                  coef_loss_mutual_info: Optional[float] = 1.0,
-                 dataloader_val: Optional[Dataset] = None,
-                 dataloader_test: Optional[Dataset] = None,
+                 dataloader_train: Optional[DataLoader] = None,
+                 dataloader_val: Optional[DataLoader] = None,
+                 dataloader_test: Optional[DataLoader] = None,
                  learning_rate: Optional[float] = 0.001
                  ):
 
@@ -137,6 +139,25 @@ class UnsupervisedTrainer(pl.LightningModule):
             tqdm_dic[variable] /= n_output
 
         return tqdm_dic
+
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint["model_dump"] = pickle.dumps(self._model)
+
+    @classmethod
+    def load_model_from_checkpoint(self, weights_path: str, on_gpu, map_location=None):
+        if on_gpu:
+            if map_location is not None:
+                checkpoint = torch.load(weights_path, map_location=map_location)
+            else:
+                checkpoint = torch.load(weights_path)
+        else:
+            checkpoint = torch.load(weights_path, map_location=lambda storage, loc: storage)
+
+        model = pickle.loads(checkpoint["model_dump"])
+        state_dict = {key.replace("_model.", ""):param for key, param in checkpoint["state_dict"].items()}
+        model.load_state_dict(state_dict)
+
+        return model
 
 
 class SupervisedCodeLengthTrainer(UnsupervisedTrainer):
