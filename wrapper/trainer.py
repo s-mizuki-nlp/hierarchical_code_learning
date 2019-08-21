@@ -105,7 +105,7 @@ class UnsupervisedTrainer(pl.LightningModule):
 
         # forward computation without back-propagation
         t_x = data_batch["embedding"]
-        t_intermediate, t_code_prob, t_x_dash = self._model.predict(t_x)
+        t_intermediate, t_code_prob, t_x_dash = self._model._predict(t_x)
 
         loss_reconst = self._loss_reconst.forward(t_x_dash, t_x)
         if self._loss_mutual_info is not None:
@@ -131,7 +131,7 @@ class UnsupervisedTrainer(pl.LightningModule):
         tqdm_dic = defaultdict(float)
         for output in outputs:
             for variable, value in output.items():
-                tqdm_dic[variable] += value
+                tqdm_dic[variable] += value.item()
         n_output = len(outputs)
         for variable in output.keys():
             tqdm_dic[variable] /= n_output
