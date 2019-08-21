@@ -5,9 +5,38 @@ import sys, io, os
 
 import torch
 from torch.utils.data import IterableDataset, Dataset
+import numpy as np
 import fasttext
 from gensim.models import KeyedVectors
 from wikipedia2vec import Wikipedia2Vec
+
+class ToyEmbeddingsDataset(Dataset):
+
+    def __init__(self, sample_size: int, embedding_dim: int, transform=None):
+
+        self.embedding = np.random.normal(size=sample_size * embedding_dim).astype(np.float32).reshape((sample_size, embedding_dim))
+        self._idx_to_word = {idx:f"{idx}" for idx in range(sample_size)}
+        self.transform = transform
+        self._n_sample = sample_size
+
+    def __len__(self):
+        return self._n_sample
+
+    def __getitem__(self, idx):
+
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        word = self._idx_to_word[idx]
+        embedding = self.embedding[idx,:]
+
+        sample = {"entity":word, "embedding":embedding}
+
+        if self.transform is not None:
+            sample = self.transform(sample)
+
+        return sample
+
 
 class FastTextDataset(Dataset):
 
