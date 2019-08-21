@@ -6,6 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 from typing import List, Optional
+import warnings
 import numpy as np
 import torch
 from torch import nn
@@ -14,11 +15,12 @@ from contextlib import ExitStack
 
 class AutoEncoder(nn.Module):
 
-    def __init__(self, encoder: nn.Module, decoder: nn.Module, dtype=torch.float32):
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, normalize_output_length: bool = False, dtype=torch.float32):
 
         super(AutoEncoder, self).__init__()
         self._encoder = encoder
         self._decoder = decoder
+        self._normalize_output_length = normalize_output_length
         self._dtype = dtype
 
     @property
@@ -32,6 +34,20 @@ class AutoEncoder(nn.Module):
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).type(self._dtype)
 
+    def _normalize(self, x: torch.Tensor, x_dash: torch.Tensor):
+        """
+        adjust reconstructed embeddings (`x_dash`) so that the L2 norm will be identical to the original embeddings (`x`).
+
+        :param x: original embeddings
+        :param x_dash: reconstructed embeddings
+        :return: length-normalized reconstructed embeddings
+        """
+        x_norm = torch.norm(x, dim=-1, keepdim=True)
+        x_dash_norm = torch.norm(x_dash, dim=-1, keepdim=True)
+        scale_factor = x_norm / (x_dash_norm + 1E-7)
+
+        return x_dash * scale_factor
+
     def forward(self, t_x: torch.Tensor, requires_grad: bool = True, enable_gumbel_softmax: bool = True):
 
         with ExitStack() as context_stack:
@@ -44,9 +60,14 @@ class AutoEncoder(nn.Module):
 
             # decoder
             if enable_gumbel_softmax:
-                t_x_dash = self._decoder.forward(t_intermediate)
+                t_decoder_input = t_intermediate
             else:
-                t_x_dash = self._decoder.forward(t_code_prob)
+                t_decoder_input = t_code_prob
+            t_x_dash = self._decoder.forward(t_decoder_input)
+
+            # length-normalizer
+            if self._normalize_output_length:
+                t_x_dash = self._normalize(x=t_x, x_dash=t_x_dash)
 
         return t_intermediate, t_code_prob, t_x_dash
 
@@ -91,3 +112,50 @@ class AutoEncoder(nn.Module):
             t_x_dash = self._decode(t_code_prob)
 
         return t_x_dash.cpu().numpy()
+
+
+class MaskedAutoEncoder(AutoEncoder):
+
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, masked_values: List[int], normalize_output_length: bool = True, dtype=torch.float32):
+
+        if not normalize_output_length:
+            warnings.warn("it is recommended to enable output length normalization.")
+
+        super(MaskedAutoEncoder, self).__init__(encoder, decoder, normalize_output_length, dtype)
+
+        self._masked_values = masked_values
+        self._mask = self._build_mask_tensor(masked_values=masked_values)
+
+    def _build_mask_tensor(self, masked_values: List[int]):
+
+        mask_shape = (1, self.n_digits, self.n_ary)
+        mask_tensor = torch.ones(mask_shape, dtype=self._dtype, requires_grad=False)
+        for value in masked_values:
+            mask_tensor[:,:,value] = 0.0
+
+        return mask_tensor
+
+    def forward(self, t_x: torch.Tensor, requires_grad: bool = True, enable_gumbel_softmax: bool = True):
+
+        with ExitStack() as context_stack:
+            # if user doesn't require gradient, disable back-propagation
+            if not requires_grad:
+                context_stack.enter_context(torch.no_grad())
+
+            # encoder
+            t_intermediate, t_code_prob = self._encoder.forward(t_x)
+
+            # mask intermediate representation, then decode it
+            if enable_gumbel_softmax:
+                t_decoder_input = t_intermediate * self._mask
+            else:
+                t_decoder_input = t_code_prob * self._mask
+
+            # decoder
+            t_x_dash = self._decoder.forward(t_decoder_input)
+
+            # length-normalizer
+            if self._normalize_output_length:
+                t_x_dash = self._normalize(x=t_x, x_dash=t_x_dash)
+
+        return t_intermediate, t_code_prob, t_x_dash
