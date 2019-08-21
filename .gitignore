@@ -1,3 +1,7 @@
+# custom
+log/
+saved_model/
+
 # IDE
 .idea/
 
