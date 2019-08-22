@@ -9,7 +9,7 @@ from torch.nn import functional as F
 
 class SimpleDecoder(nn.Module):
 
-    def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int):
+    def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int, **kwargs):
 
         super(SimpleDecoder, self).__init__()
 

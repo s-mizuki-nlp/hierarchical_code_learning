@@ -15,7 +15,7 @@ from contextlib import ExitStack
 
 class AutoEncoder(nn.Module):
 
-    def __init__(self, encoder: nn.Module, decoder: nn.Module, normalize_output_length: bool = False, dtype=torch.float32):
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, normalize_output_length: bool = False, dtype=torch.float32, **kwargs):
 
         super(AutoEncoder, self).__init__()
         self._encoder = encoder
@@ -116,7 +116,7 @@ class AutoEncoder(nn.Module):
 
 class MaskedAutoEncoder(AutoEncoder):
 
-    def __init__(self, encoder: nn.Module, decoder: nn.Module, masked_values: List[int], normalize_output_length: bool = True, dtype=torch.float32):
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, masked_values: List[int], normalize_output_length: bool = True, dtype=torch.float32, **kwargs):
 
         if not normalize_output_length:
             warnings.warn("it is recommended to enable output length normalization.")

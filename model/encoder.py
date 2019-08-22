@@ -14,7 +14,7 @@ from torch.nn import functional as F
 class SimpleEncoder(nn.Module):
 
     def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int,
-                 n_dim_hidden: Optional[int] = None, f_temperature: float = 1.0):
+                 n_dim_hidden: Optional[int] = None, f_temperature: float = 1.0, **kwargs):
 
         super(SimpleEncoder, self).__init__()
 
