@@ -12,6 +12,6 @@ python train_unsupervised.py \
 --config_file="./config_files/template_unsupervised.py" \
 --log_dir="./log/" \
 --experiment_name="word2vec" \
---saved_model_dir="./saved_model/word2vec/" \
+--model_dir="./saved_model/word2vec/" \
 --verbose
 # gpus="1,2"

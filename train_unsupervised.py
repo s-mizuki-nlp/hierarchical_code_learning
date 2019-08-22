@@ -51,7 +51,7 @@ def parse_args():
     parser.add_argument("--config_file", "-c", required=True, type=str, help="path to the config file (*.py).")
     parser.add_argument("--log_dir", "-l", required=False, default="./log", type=str, help="directory to be used for saving tensorboard log.")
     parser.add_argument("--experiment_name", "-n", required=False, default="default", type=str, help="experiment name that is used to log results.")
-    parser.add_argument("--saved_model_dir", "-m", required=False, default="./saved_model", type=str, help="directory to be used for saving trained model.")
+    parser.add_argument("--model_dir", "-m", required=False, default="./saved_model", type=str, help="directory to be used for saving trained model.")
     parser.add_argument("--gpus", required=False, type=check_gpus, default=None, help="GPU device ids to be used for training. DEFAULT:None(=cpu)"),
     parser.add_argument("--verbose", action="store_true", help="show verbose output.")
     args = parser.parse_args()
@@ -120,9 +120,10 @@ if __name__ == "__main__":
     cfg_system = config.experiment_system
     cfg_system["max_nb_epochs"] = args.epochs
     cfg_system["gpus"] = args.gpus
-    cfg_system["checkpoint_callback"].filepath = args.saved_model_dir
-    cfg_system["experiment"].save_dir = args.log_dir
-    cfg_system["experiment"].name = args.experiment_name
+    cfg_system["checkpoint_callback"].update(filepath=args.model_dir, prefix=args.experiment_name)
+    cfg_system["checkpoint_callback"] = ModelCheckpoint(**cfg_system["checkpoint_callback"])
+    cfg_system["experiment"].update(save_dir=args.log_dir, name=args.experiment_name)
+    cfg_system["experiment"] = Experiment(**cfg_system["experiment"])
 
     if args.verbose:
         cfg_system_print = {}
