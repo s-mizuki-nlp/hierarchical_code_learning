@@ -12,8 +12,9 @@ from wikipedia2vec import Wikipedia2Vec
 
 class ToyEmbeddingsDataset(Dataset):
 
-    def __init__(self, sample_size: int, embedding_dim: int, transform=None):
+    def __init__(self, sample_size: int, embedding_dim: int, transform=None, seed: int = 0):
 
+        np.random.seed(seed)
         self.embedding = np.random.normal(size=sample_size * embedding_dim).astype(np.float32).reshape((sample_size, embedding_dim))
         self._idx_to_word = {idx:f"{idx}" for idx in range(sample_size)}
         self.transform = transform
@@ -36,6 +37,10 @@ class ToyEmbeddingsDataset(Dataset):
             sample = self.transform(sample)
 
         return sample
+
+    @property
+    def n_dim(self):
+        return self.embedding.shape[1]
 
 
 class FastTextDataset(Dataset):
@@ -65,6 +70,10 @@ class FastTextDataset(Dataset):
             sample = self.transform(sample)
 
         return sample
+
+    @property
+    def n_dim(self):
+        return self.model.get_dimension()
 
 
 class Word2VecDataset(Dataset):
@@ -97,6 +106,10 @@ class Word2VecDataset(Dataset):
 
         return sample
 
+    @property
+    def n_dim(self):
+        return self.model.vector_size
+
 
 class Wikipedia2VecDataset(Dataset):
 
@@ -125,3 +138,7 @@ class Wikipedia2VecDataset(Dataset):
             sample = self.transform(sample)
 
         return sample
+
+    @property
+    def n_dim(self):
+        return self.model.train_params["dim_size"]
