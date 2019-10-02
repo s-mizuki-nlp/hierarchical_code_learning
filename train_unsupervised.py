@@ -107,10 +107,11 @@ if __name__ == "__main__":
     # instanciate autoencoder
     hyper_parameters = config.hyper_parameters
     cfg_model = config.hyper_parameters["model"]
-    cfg_model["n_dim_emb"] = dataset.n_dim if cfg_model["n_dim_emb"] is None else cfg_model["n_dim_emb"]
-    encoder = SimpleEncoder(**cfg_model)
-    decoder = SimpleDecoder(**cfg_model)
-    model = AutoEncoder(encoder=encoder, decoder=decoder, **cfg_model)
+    cfg_model_enc_dec = cfg_model["encoder-decoder"]
+    cfg_model_enc_dec["n_dim_emb"] = cfg_model_enc_dec.get("n_dim_emb", dataset.n_dim)
+    encoder = SimpleEncoder(**cfg_model_enc_dec)
+    decoder = SimpleDecoder(**cfg_model_enc_dec)
+    model = AutoEncoder(encoder=encoder, decoder=decoder, **cfg_model["autoencoder"])
 
     # instanciate trainer
     cfg_trainer = config.hyper_parameters["trainer"]

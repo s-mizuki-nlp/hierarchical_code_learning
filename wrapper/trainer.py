@@ -72,7 +72,7 @@ class UnsupervisedTrainer(pl.LightningModule):
 
         # forward computation
         t_x = data_batch["embedding"]
-        t_intermediate, t_code_prob, t_x_dash = self._model.forward(t_x)
+        t_latent_code, t_code_prob, t_x_dash = self._model.forward(t_x)
 
         loss_reconst = self._loss_reconst.forward(t_x_dash, t_x)
 

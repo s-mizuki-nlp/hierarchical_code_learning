@@ -15,11 +15,12 @@ from contextlib import ExitStack
 
 class AutoEncoder(nn.Module):
 
-    def __init__(self, encoder: nn.Module, decoder: nn.Module, normalize_output_length: bool = False, dtype=torch.float32, **kwargs):
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, discretizer: nn.Module, normalize_output_length: bool = False, dtype=torch.float32, **kwargs):
 
         super(AutoEncoder, self).__init__()
         self._encoder = encoder
         self._decoder = decoder
+        self._discretizer = discretizer
         self._normalize_output_length = normalize_output_length
         self._dtype = dtype
 
@@ -48,7 +49,7 @@ class AutoEncoder(nn.Module):
 
         return x_dash * scale_factor
 
-    def forward(self, t_x: torch.Tensor, requires_grad: bool = True, enable_gumbel_softmax: bool = True):
+    def forward(self, t_x: torch.Tensor, requires_grad: bool = True, enable_discretizer: bool = True):
 
         with ExitStack() as context_stack:
             # if user doesn't require gradient, disable back-propagation
@@ -56,24 +57,24 @@ class AutoEncoder(nn.Module):
                 context_stack.enter_context(torch.no_grad())
 
             # encoder
-            t_intermediate, t_code_prob = self._encoder.forward(t_x)
+            t_code_prob = self._encoder.forward(t_x)
 
             # decoder
-            if enable_gumbel_softmax:
-                t_decoder_input = t_intermediate
+            if enable_discretizer:
+                t_latent_code = self._discretizer.forward(t_code_prob)
             else:
-                t_decoder_input = t_code_prob
-            t_x_dash = self._decoder.forward(t_decoder_input)
+                t_latent_code = t_code_prob
+            t_x_dash = self._decoder.forward(t_latent_code)
 
             # length-normalizer
             if self._normalize_output_length:
                 t_x_dash = self._normalize(x=t_x, x_dash=t_x_dash)
 
-        return t_intermediate, t_code_prob, t_x_dash
+        return t_latent_code, t_code_prob, t_x_dash
 
     def _predict(self, t_x: torch.Tensor):
 
-        return self.forward(t_x, requires_grad=False, enable_gumbel_softmax=False)
+        return self.forward(t_x, requires_grad=False, enable_discretizer=False)
 
     def predict(self, mat_x: np.ndarray):
 
@@ -84,7 +85,7 @@ class AutoEncoder(nn.Module):
 
     def _encode(self, t_x: torch.Tensor):
 
-        _, t_code_prob = self._encoder.forward(t_x)
+        t_code_prob = self._encoder.forward(t_x)
         t_code = torch.argmax(t_code_prob, dim=2, keepdim=False)
         return t_code
 
@@ -116,12 +117,12 @@ class AutoEncoder(nn.Module):
 
 class MaskedAutoEncoder(AutoEncoder):
 
-    def __init__(self, encoder: nn.Module, decoder: nn.Module, masked_values: List[int], normalize_output_length: bool = True, dtype=torch.float32, **kwargs):
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, discretizer: nn.Module, masked_values: List[int], normalize_output_length: bool = True, dtype=torch.float32, **kwargs):
 
         if not normalize_output_length:
             warnings.warn("it is recommended to enable output length normalization.")
 
-        super(MaskedAutoEncoder, self).__init__(encoder, decoder, normalize_output_length, dtype)
+        super(MaskedAutoEncoder, self).__init__(encoder, decoder, discretizer, normalize_output_length, dtype)
 
         self._masked_values = masked_values
         self._mask = self._build_mask_tensor(masked_values=masked_values)
@@ -135,7 +136,7 @@ class MaskedAutoEncoder(AutoEncoder):
 
         return mask_tensor
 
-    def forward(self, t_x: torch.Tensor, requires_grad: bool = True, enable_gumbel_softmax: bool = True):
+    def forward(self, t_x: torch.Tensor, requires_grad: bool = True, enable_discretizer: bool = True):
 
         with ExitStack() as context_stack:
             # if user doesn't require gradient, disable back-propagation
@@ -143,13 +144,14 @@ class MaskedAutoEncoder(AutoEncoder):
                 context_stack.enter_context(torch.no_grad())
 
             # encoder
-            t_intermediate, t_code_prob = self._encoder.forward(t_x)
+            t_code_prob = self._encoder.forward(t_x)
 
             # mask intermediate representation, then decode it
-            if enable_gumbel_softmax:
-                t_decoder_input = t_intermediate * self._mask
+            if enable_discretizer:
+                t_latent_code = self._discretizer(t_code_prob)
             else:
-                t_decoder_input = t_code_prob * self._mask
+                t_latent_code = t_code_prob
+            t_decoder_input = t_latent_code * self._mask
 
             # decoder
             t_x_dash = self._decoder.forward(t_decoder_input)
@@ -158,4 +160,4 @@ class MaskedAutoEncoder(AutoEncoder):
             if self._normalize_output_length:
                 t_x_dash = self._normalize(x=t_x, x_dash=t_x_dash)
 
-        return t_intermediate, t_code_prob, t_x_dash
+        return t_latent_code, t_code_prob, t_x_dash

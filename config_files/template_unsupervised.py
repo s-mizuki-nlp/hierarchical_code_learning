@@ -4,14 +4,19 @@
 import os, sys, io
 
 from model.loss import ReconstructionLoss, MutualInformationLoss
+from model.discretizer import StraightThroughEstimator, GumbelSoftmax, Entmax15Estimator
 
 hyper_parameters = {
     "model": {
-        "n_dim_emb": None,
-        "n_digits": 32,
-        "n_ary": 32,
-        "f_temperature": 1.0,
-        "normalize_output_length": False
+        "encoder-decoder":{
+            # "n_dim_emb": None, # determined by dataset
+            "n_digits": 32,
+            "n_ary": 32
+        },
+        "autoencoder":{
+            "discretizer":Entmax15Estimator(add_gumbel_noise=True, temperature=1.0),
+            "normalize_output_length": False
+        }
     },
     "trainer": {
         "loss_reconst": ReconstructionLoss(),
