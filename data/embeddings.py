@@ -43,6 +43,48 @@ class ToyEmbeddingsDataset(Dataset):
         return self.embedding.shape[1]
 
 
+class GeneralPurposeEmbeddingsDataset(Dataset):
+
+    def __init__(self, path_numpy_array_binary_format: str, path_vocabulary_text: str, transform=None):
+
+        self.embedding = np.load(path_numpy_array_binary_format)
+        sample_size = self.embedding.shape[0]
+        self._vocabulary = self._load_vocabulary_text(path_vocabulary_text)
+        assert len(self._vocabulary) == sample_size, "embeddings and vocabulary size mismatch detected."
+        self._idx_to_word = {idx:word for idx, word in enumerate(self._vocabulary)}
+        self.transform = transform
+        self._n_sample = sample_size
+
+    def _load_vocabulary_text(self, path_vocabulary_text: str):
+        lst_v = []
+        with io.open(path_vocabulary_text, mode="r") as ifs:
+            for s in ifs:
+                lst_v.append(s.strip())
+        return lst_v
+
+    def __len__(self):
+        return self._n_sample
+
+    def __getitem__(self, idx):
+
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        word = self._idx_to_word[idx]
+        embedding = self.embedding[idx,:]
+
+        sample = {"entity":word, "embedding":embedding}
+
+        if self.transform is not None:
+            sample = self.transform(sample)
+
+        return sample
+
+    @property
+    def n_dim(self):
+        return self.embedding.shape[1]
+
+
 class FastTextDataset(Dataset):
 
     def __init__(self, path_fasttext_binary_format: str, transform=None):
