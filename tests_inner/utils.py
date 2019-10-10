@@ -53,7 +53,7 @@ def _calc_break_intensity(vec_prob_c_x, vec_prob_c_y):
     ret = 1.0 - vec_prob_c_x[0] - np.sum(vec_prob_c_x*vec_prob_c_y) + 2*vec_prob_c_x[0]*vec_prob_c_y[0]
     return ret
 
-def calc_common_prefix_length_expectation(mat_prob_c_x, mat_prob_c_y):
+def calc_soft_common_prefix_length(mat_prob_c_x, mat_prob_c_y):
     n_digits, n_ary = mat_prob_c_x.shape
     vec_intensity = np.zeros(n_digits, dtype=np.float32)
     for idx, (vec_prob_c_x_t, vec_prob_c_y_t) in enumerate(zip(mat_prob_c_x, mat_prob_c_y)):
@@ -69,7 +69,7 @@ def calc_soft_hyponymy_score(mat_prob_c_x, mat_prob_c_y):
     # prob_c[n,v] = Pr{C_n=v}; prob_c = (N_digits, N_ary)
     vec_prob_c_x_zero = mat_prob_c_x[:,0]
     hcl = calc_soft_code_length(vec_prob_c_x_zero)
-    cpl = calc_common_prefix_length_expectation(mat_prob_c_x, mat_prob_c_y)
+    cpl = calc_soft_common_prefix_length(mat_prob_c_x, mat_prob_c_y)
 
     return cpl - hcl
 
