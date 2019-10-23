@@ -32,13 +32,22 @@ class StraightThroughEstimator(nn.Module):
 
 class GumbelSoftmax(nn.Module):
 
-    def __init__(self, temperature: float = 1.0, **kwargs):
+    def __init__(self, temperature: float = 1.0, add_gumbel_noise: bool = True, **kwargs):
         super(GumbelSoftmax, self).__init__()
+        self._add_gumbel_noise = add_gumbel_noise
         self._temperature = temperature
 
+        if not add_gumbel_noise:
+            Warning("it reduces to a simple softmax activation.")
+
     def forward(self, probs, dim: int = -1):
+
         logits = torch.log(probs)
-        return F.gumbel_softmax(logits=logits, tau=self._temperature, hard=False, dim=dim)
+
+        if self._add_gumbel_noise:
+            return F.gumbel_softmax(logits=logits, tau=self._temperature, hard=False, dim=dim)
+        else:
+            return F.softmax(input=logits / self._temperature, dim=dim)
 
 
 class Entmax15Estimator(nn.Module):
