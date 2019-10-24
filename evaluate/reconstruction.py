@@ -36,3 +36,13 @@ class NearestNeighborSearchEvaluator(object):
         prec_at_k = len(set(topk_pred) & set(topk_gt)) / topk
 
         return prec_at_k
+
+    def precision_at_k_all(self, topk: int = 10, average: bool = True):
+
+        func_eval = lambda idx: self.precision_at_k(sample_index=idx, topk=topk)
+        lst_prec_at_k = list(map(func_eval, range(self._n_sample)))
+
+        if average:
+            return np.mean(lst_prec_at_k)
+        else:
+            return lst_prec_at_k
