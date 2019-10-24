@@ -5,7 +5,7 @@ from typing import List, Optional
 import torch
 from torch import nn
 from torch.nn import functional as F
-from entmax.activations import entmax15
+from entmax.activations import entmax15, sparsemax
 
 class StraightThroughEstimator(nn.Module):
 
@@ -69,3 +69,23 @@ class Entmax15Estimator(nn.Module):
             logits = self._gumbel_noise(logits=logits)
 
         return entmax15(logits, dim=dim)
+
+class SparsemaxEstimator(nn.Module):
+
+    def __init__(self, add_gumbel_noise: bool = False, temperature: float = 1.0):
+        super(SparsemaxEstimator, self).__init__()
+        self._add_gumbel_noise = add_gumbel_noise
+        self._temperature = temperature
+
+    def _gumbel_noise(self, logits):
+        gumbels = -torch.empty_like(logits).exponential_().log()  # ~Gumbel(0,1)
+        gumbels = (logits + gumbels) / self._temperature  # ~Gumbel(logits,tau)
+
+        return gumbels
+
+    def forward(self, probs, dim: int = -1):
+        logits = torch.log(probs)
+        if self._add_gumbel_noise:
+            logits = self._gumbel_noise(logits=logits)
+
+        return sparsemax(logits, dim=dim)
