@@ -18,6 +18,8 @@ from wikipedia2vec import Wikipedia2Vec
 class HyponymyDataset(IterableDataset):
 
     def __init__(self, path: str, header: bool, delimiter: str, columns: Dict[str, Union[int, slice]],
+                 lowercase: bool = False,
+                 replace_whitespace_with_underscore: bool = False,
                  description: str = "", transform=None):
 
         super(HyponymyDataset).__init__()
@@ -27,6 +29,8 @@ class HyponymyDataset(IterableDataset):
         self._header = header
         self._delimiter = delimiter
         self._columns = columns
+        self._lowercase = lowercase
+        self._replace_whitespace = replace_whitespace_with_underscore
         self._n_sample = None
         self.description = description
         self.transform = transform
@@ -48,7 +52,12 @@ class HyponymyDataset(IterableDataset):
             _ = next(ifs)
 
         for s_entry in ifs:
+            if self._lowercase:
+                s_entry = s_entry.lower()
             lst_entry = s_entry.strip().split(self._delimiter)
+            if self._replace_whitespace:
+                lst_entry = [entry.replace(" ","_") for entry in lst_entry]
+
             entry = {field_name:lst_entry[field_indices] for field_name, field_indices in self._columns.items()}
             if self.transform is not None:
                 entry = self.transform(entry)
