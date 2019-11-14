@@ -35,6 +35,83 @@ class HyponymyDataset(IterableDataset):
         self.description = description
         self.transform = transform
 
+    def _extract_distinct_values(self, column_name):
+        if column_name not in self._columns:
+            return []
+
+        _transform_cache = self.transform
+        self.transform = None
+
+        set_entry = set()
+        for entry in self:
+            set_entry.add(entry.get(column_name, None))
+
+        distinct_values = list(filter(bool, list(set_entry)))
+
+        self.transform = _transform_cache
+        return distinct_values
+
+    def _test_case_sensitive(self, column_name):
+        if column_name not in self._columns:
+            return False
+
+        _transform_cache = self.transform
+        self.transform = None
+
+        def is_case_sensitive(str_: str):
+            return any(s.isupper() for s in str_)
+
+        ret = any([is_case_sensitive(entry.get(column_name,"")) for entry in self])
+        self.transform = _transform_cache
+        return ret
+
+    def _test_has_phrase(self, column_name):
+        if column_name not in self._columns:
+            return False
+
+        _transform_cache = self.transform
+        self.transform = None
+
+        def has_phrase(str_: str):
+            delimiters = (" ","_")
+            return any(str_.find(delimiter) != -1 for delimiter in delimiters)
+
+        ret = any([has_phrase(entry.get(column_name,"")) for entry in self])
+        self.transform = _transform_cache
+        return ret
+
+    @property
+    def relations(self) -> List[str]:
+        return self._extract_distinct_values("relation")
+
+    @property
+    def classification_labels(self) -> List[str]:
+        return self._extract_distinct_values("is_hyponymy")
+
+    @property
+    def is_case_sensitive(self):
+        if self._lowercase:
+            ret = False
+        else:
+            is_hypo_case_sensitive = self._test_case_sensitive("hyponym")
+            is_hyper_case_sensitive = self._test_case_sensitive("hypernym")
+            ret = is_hypo_case_sensitive | is_hyper_case_sensitive
+        return ret
+
+    @property
+    def has_phrase(self):
+        if self._lowercase:
+            ret = False
+        else:
+            has_hypo_phrase = self._test_has_phrase("hyponym")
+            has_hyper_phrase = self._test_has_phrase("hypernym")
+            ret = has_hypo_phrase | has_hyper_phrase
+        return ret
+
+    @property
+    def lowercase(self):
+        return self._lowercase
+
     def __len__(self):
         if self._n_sample is not None:
             return self._n_sample
