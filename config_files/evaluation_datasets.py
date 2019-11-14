@@ -42,6 +42,7 @@ cfg_evaluation_datasets_ranking_retrieval = {
 }
 
 # evaluation dataset for classification task
+# ENTAILMENT dataset は optional. 除外してもよい
 cfg_evaluation_datasets_classification = {
     "BLESS-hyponymy": {
         "path": os.path.join(DIR_EVALSET, "classification/BLESS_hyponymy.all"),
@@ -56,6 +57,13 @@ cfg_evaluation_datasets_classification = {
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3},
         "description": "Weeds-BLESS dataset: hyponymy or not",
+    },
+    "ENTAILMENT": {
+        "path": os.path.join(DIR_EVALSET, "classification_optional/Baroni2012.all"),
+        "header": False,
+        "delimiter": "\t",
+        "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3},
+        "description": "ENTAILMENT dataset[Baroni+ 2012]: hyponymy or not",
     },
     "BIBLESS": {
         "path": os.path.join(DIR_EVALSET, "classification/ABIBLESS.txt"),
