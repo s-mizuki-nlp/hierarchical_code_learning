@@ -13,7 +13,7 @@ import sys, io, os
 from typing import List, Dict, Optional
 from collections.abc import Callable
 import unittest
-from data.word_embeddings import Word2VecDataset, FastTextDataset, GeneralPurposeEmbeddingsDataset
+from dataset.word_embeddings import Word2VecDataset, FastTextDataset, GeneralPurposeEmbeddingsDataset
 from config_files.word_embeddings import DIR_WORD_EMBEDDINGS
 
 class BaseValidator(unittest.TestCase):

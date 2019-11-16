@@ -18,13 +18,13 @@ wd = os.path.dirname(__file__)
 wd = "." if wd == "" else wd
 os.chdir(wd)
 
-from data.other_embeddings import ToyEmbeddingsDataset, Wikipedia2VecDataset
-from wrapper.trainer import UnsupervisedTrainer
+from dataset.other_embeddings import ToyEmbeddingsDataset, Wikipedia2VecDataset
+from lightning_module.trainer import UnsupervisedTrainer
 from model.autoencoder import AutoEncoder
 from model.encoder import SimpleEncoder
 from model.decoder import SimpleDecoder
 from model.loss import ReconstructionLoss
-from data.word_embeddings import Word2VecDataset, FastTextDataset
+from dataset.word_embeddings import Word2VecDataset, FastTextDataset
 
 _RANDOM_SEED = 0
 

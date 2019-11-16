@@ -1,6 +1,7 @@
 # custom
 log/
 saved_model/
+experiment_results/
 
 # IDE
 .idea/
