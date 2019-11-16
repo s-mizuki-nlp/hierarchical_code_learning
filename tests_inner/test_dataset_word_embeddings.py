@@ -5,12 +5,15 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+warnings.simplefilter("always")
+
 import numpy as np
 import sys, io, os
 from typing import List, Dict, Optional
 from collections.abc import Callable
 import unittest
-from data.word_embeddings import Word2VecDataset, FastTextDataset
+from data.word_embeddings import Word2VecDataset, FastTextDataset, GeneralPurposeEmbeddingsDataset
 from config_files.word_embeddings import DIR_WORD_EMBEDDINGS
 
 class BaseValidator(unittest.TestCase):
@@ -46,7 +49,8 @@ class ImplementationTestCases(BaseValidator, unittest.TestCase):
     def setUpClass(cls) -> None:
         cls._test_objects = {
             "Word2VecDataset": Word2VecDataset,
-            "FastTextDataset": FastTextDataset
+            "FastTextDataset": FastTextDataset,
+            "GeneralPurposeEmbeddingsDataset": GeneralPurposeEmbeddingsDataset
         }
 
     def test_property_method_availability(self):
@@ -104,3 +108,67 @@ class Word2VecTestCases(unittest.TestCase):
         vec_e_pred = np.sum([self._dataset.encode(token) for token in lst_tokens], axis=0) / len(lst_tokens)
 
         self.assertTrue(np.allclose(vec_e, vec_e_pred))
+
+
+class FastTextTestCases(unittest.TestCase):
+
+    _cfg_embeddings = {
+        "path_fasttext_binary_format":os.path.join(DIR_WORD_EMBEDDINGS, "fasttext-wiki-news-300/wiki-news-300d-1M-subword.bin"),
+        "transform":None,
+        "enable_phrase_composition":True
+    }
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls._dataset = FastTextDataset(**cls._cfg_embeddings)
+
+    def test_item_key_consistency(self):
+
+        idx = 15
+        entity = self._dataset.index_to_entity(idx)
+
+        record_i = self._dataset[idx]
+        record_e = self._dataset[entity]
+
+        self.assertEqual(record_i["entity"], record_e["entity"])
+        self.assertTrue(np.array_equal(record_i["embedding"], record_e["embedding"]))
+
+    def test_phrase_splitter(self):
+
+        phrase = "New_York_Times"
+        lst_tokens = ["New","York","Times"]
+        self.assertFalse(phrase in self._dataset.vocab)
+        self.assertTrue(all(token in self._dataset.vocab for token in lst_tokens))
+
+        lst_tokens_pred = self._dataset.phrase_splitter(phrase)
+        self.assertEqual(lst_tokens, lst_tokens_pred)
+
+    def test_phrase_composition(self):
+
+        phrase = "max_margin_principle"
+        lst_tokens = self._dataset.phrase_splitter(phrase)
+        self.assertTrue(self._dataset.is_encodable(phrase))
+
+        vec_e = self._dataset.encode(phrase)
+        vec_e_gt = np.sum([self._dataset.encode(token) for token in lst_tokens], axis=0) / len(lst_tokens)
+
+        self.assertTrue(np.allclose(vec_e, vec_e_gt))
+
+    def test_oov_token(self):
+        token = "geaefmltew"
+        self.assertFalse(token in self._dataset.vocab)
+
+        # fasttext must handle oov token
+        vec_e = self._dataset.encode(token)
+        self.assertTrue(isinstance(vec_e, np.ndarray))
+
+    def test_oov_phrase(self):
+        phrase = "New_York_TimesRoman"
+        lst_tokens = self._dataset.phrase_splitter(phrase)
+        self.assertTrue(self._dataset.is_encodable(phrase))
+
+        # fasttext must handle oov token
+        vec_e = self._dataset.encode_phrase(phrase)
+        vec_e_gt = np.sum([self._dataset.encode(token) for token in lst_tokens], axis=0) / len(lst_tokens)
+
+        self.assertTrue(np.allclose(vec_e, vec_e_gt))
