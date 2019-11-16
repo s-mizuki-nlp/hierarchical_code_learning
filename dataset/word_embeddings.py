@@ -65,7 +65,7 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
             raise NotImplementedError(f"unsupprted key type: {type(key)}")
 
         embedding = self.encode(word)
-        assert embedding is not None, f"string {word} cannot be encoded."
+        assert embedding is not None, f"string `{word}` cannot be encoded."
 
         sample = {"entity":word, "embedding":embedding}
 
@@ -91,6 +91,8 @@ class GeneralPurposeEmbeddingsDataset(AbstractWordEmbeddingsDataset):
         self._entity_to_idx = {word:idx for idx, word in enumerate(self._vocabulary)}
         self.transform = transform
         self._enable_phrase_composition = enable_phrase_composition
+        if enable_phrase_composition:
+            self._init_mwe_tokenizer()
 
     def _load_vocabulary_text(self, path_vocabulary_text: str):
         lst_v = []
