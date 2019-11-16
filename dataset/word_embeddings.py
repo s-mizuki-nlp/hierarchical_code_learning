@@ -155,6 +155,10 @@ class FastTextDataset(AbstractWordEmbeddingsDataset):
             else:
                 return self.model.get_word_vector(entity)
 
+    # fastText embedding can encode arbitrary string.
+    def is_encodable(self, entity: str) -> bool:
+        return True
+
     @property
     def n_dim(self):
         return self.model.get_dimension()
