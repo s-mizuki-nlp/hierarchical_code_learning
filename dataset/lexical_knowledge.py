@@ -8,14 +8,10 @@ from __future__ import print_function
 import os, sys, io
 from typing import Dict, List, Union
 import torch
-from torch.utils.data import IterableDataset, Dataset
-import numpy as np
-import fasttext
-from gensim.models import KeyedVectors
-from wikipedia2vec import Wikipedia2Vec
+from torch.utils.data import Dataset
 
 
-class HyponymyDataset(IterableDataset):
+class HyponymyDataset(Dataset):
 
     def __init__(self, path: str, header: bool, delimiter: str, columns: Dict[str, Union[int, slice]],
                  lowercase: bool = False,
@@ -31,9 +27,16 @@ class HyponymyDataset(IterableDataset):
         self._columns = columns
         self._lowercase = lowercase
         self._replace_whitespace = replace_whitespace_with_underscore
-        self._n_sample = None
         self.description = description
         self.transform = transform
+        self._lst_samples = self._text_loader(path, header)
+
+    def _text_loader(self, path: str, header: bool):
+        with io.open(path, mode="r") as ifs:
+            if header:
+                _ = next(ifs)
+            ret = list(filter(bool, [record.strip() for record in ifs]))
+        return ret
 
     def _extract_distinct_values(self, column_name):
         if column_name not in self._columns:
@@ -113,34 +116,35 @@ class HyponymyDataset(IterableDataset):
         return self._lowercase
 
     def __len__(self):
-        if self._n_sample is not None:
-            return self._n_sample
-        else:
-            n_sample = 0
-            for _ in self:
-                n_sample += 1
-            self._n_sample = n_sample
-            return self._n_sample
+        return len(self._lst_samples)
+
+    def _preprocess(self, s_entry: str):
+        if self._lowercase:
+            s_entry = s_entry.lower()
+        lst_entry = s_entry.split(self._delimiter)
+        if self._replace_whitespace:
+            lst_entry = [entry.replace(" ","_") for entry in lst_entry]
+
+        entry = {field_name:lst_entry[field_indices] for field_name, field_indices in self._columns.items()}
+        return entry
 
     def __iter__(self):
-
-        ifs = io.open(self.path, mode="r")
-        if self._header:
-            _ = next(ifs)
-
-        for s_entry in ifs:
-            if self._lowercase:
-                s_entry = s_entry.lower()
-            lst_entry = s_entry.strip().split(self._delimiter)
-            if self._replace_whitespace:
-                lst_entry = [entry.replace(" ","_") for entry in lst_entry]
-
-            entry = {field_name:lst_entry[field_indices] for field_name, field_indices in self._columns.items()}
+        for s_entry in self._lst_samples:
+            entry = self._preprocess(s_entry)
             if self.transform is not None:
                 entry = self.transform(entry)
             yield entry
 
-        ifs.close()
+    def __getitem__(self, idx: Union[int, torch.Tensor]):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        s_entry = self._lst_samples[idx]
+        entry = self._preprocess(s_entry)
+        if self.transform is not None:
+            entry = self.transform(entry)
+
+        return entry
 
     @property
     def verbose(self):
