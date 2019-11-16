@@ -6,17 +6,21 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import numpy as np
+from dataset.transform import FieldTypeConverter
+_distance_str_to_float = FieldTypeConverter(dict_field_type_converter={"distance":np.float32})
 
 DIR_LEXICAL_KNOWLEDGE = "/home/sakae/Windows/dataset/hypernym_detection/wordnet_nguyen_2017/"
 
 # lexical knowledge: graded hyponymy relations extracted from WordNet corpus.
 # lemmas in these files are case sensitive and phrase included.
-cfg_evaluation_datasets_ranking_retrieval = {
+cfg_hyponymy_relation_datasets = {
     "WordNet-hyponymy-noun": {
         "path": os.path.join(DIR_LEXICAL_KNOWLEDGE, "lexical_knowledge_wordnet_hyponymy_noun_valid_case_sensitive.txt"),
         "header": True,
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "distance":2, "pos": 3},
+        # "transform": _distance_str_to_float,
         "description": "WordNet-hyponymy relation dataset: noun",
     },
     "WordNet-hyponymy-verb": {
@@ -24,6 +28,7 @@ cfg_evaluation_datasets_ranking_retrieval = {
         "header": True,
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "distance":2, "pos": 3},
+        # "transform": _distance_str_to_float,
         "description": "WordNet-hyponymy relation dataset: verb",
     },
     "WordNet-hyponymy-noun-verb": {
@@ -31,6 +36,8 @@ cfg_evaluation_datasets_ranking_retrieval = {
         "header": True,
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "distance":2, "pos": 3},
+        # "transform": _distance_str_to_float,
         "description": "WordNet-hyponymy relation dataset: noun and verb",
     }
 }
+
