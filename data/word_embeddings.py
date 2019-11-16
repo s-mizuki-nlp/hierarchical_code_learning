@@ -2,7 +2,7 @@
 # -*- coding:utf-8 -*-
 
 import io, os
-from typing import Union, Collection
+from typing import Union, Collection, Optional
 
 from abc import ABCMeta, abstractmethod
 
@@ -31,16 +31,19 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
         self._mwe_tokenizer = MWETokenizer(it)
 
     @abstractmethod
-    def encode_phrase(self, phrase):
+    def encode_phrase(self, phrase) -> Optional[np.ndarray]:
         pass
 
     @abstractmethod
-    def encode(self, entity):
+    def encode(self, entity) -> Optional[np.ndarray]:
         pass
 
-    def is_encodable(self, entity: str):
+    def is_encodable(self, entity: str) -> bool:
         vec_e = self.encode(entity)
         return vec_e is not None
+
+    def index_to_entity(self, index: int):
+        return self._idx_to_word[index]
 
     @abstractmethod
     def vocab(self) -> Collection[str]:
@@ -71,6 +74,9 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
 
         return sample
 
+    def __len__(self):
+        return len(self._idx_to_word)
+
 
 class GeneralPurposeEmbeddingsDataset(AbstractWordEmbeddingsDataset):
 
@@ -84,7 +90,6 @@ class GeneralPurposeEmbeddingsDataset(AbstractWordEmbeddingsDataset):
         self._idx_to_word = {idx:word for idx, word in enumerate(self._vocabulary)}
         self._entity_to_idx = {word:idx for idx, word in enumerate(self._vocabulary)}
         self.transform = transform
-        self._n_sample = sample_size
         self._enable_phrase_composition = enable_phrase_composition
 
     def _load_vocabulary_text(self, path_vocabulary_text: str):
@@ -93,9 +98,6 @@ class GeneralPurposeEmbeddingsDataset(AbstractWordEmbeddingsDataset):
             for s in ifs:
                 lst_v.append(s.strip())
         return lst_v
-
-    def __len__(self):
-        return self._n_sample
 
     def encode(self, entity):
         if entity in self.vocab:
@@ -122,37 +124,42 @@ class GeneralPurposeEmbeddingsDataset(AbstractWordEmbeddingsDataset):
         return self._entity_to_idx
 
 
-class FastTextDataset(Dataset):
+class FastTextDataset(AbstractWordEmbeddingsDataset):
 
-    def __init__(self, path_fasttext_binary_format: str, transform=None):
+    def __init__(self, path_fasttext_binary_format: str, transform=None,
+                 enable_phrase_composition=True):
 
         assert os.path.exists(path_fasttext_binary_format), f"file not found: {path_fasttext_binary_format}"
         self.model = fasttext.load_model(path_fasttext_binary_format)
         self.transform = transform
+        self._enable_phrase_composition = enable_phrase_composition
         self._idx_to_word = {idx:word for idx, word in enumerate(self.model.get_words(on_unicode_error="ignore"))}
-        self._n_sample = len(self._idx_to_word)
+        self._vocab = set(self._idx_to_word.values())
 
-    def __len__(self):
-        return self._n_sample
+        if enable_phrase_composition:
+            self._init_mwe_tokenizer()
 
-    def __getitem__(self, idx):
+    def encode_phrase(self, phrase: str):
+        lst_tokens = self.phrase_splitter(phrase)
+        vec_r = np.mean(np.stack([self.model.get_word_vector(token) for token in lst_tokens]), axis=0)
+        return vec_r
 
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-
-        word = self._idx_to_word[idx]
-        embedding = self.model.get_word_vector(word)
-
-        sample = {"entity":word, "embedding":embedding}
-
-        if self.transform is not None:
-            sample = self.transform(sample)
-
-        return sample
+    def encode(self, entity: str):
+        if entity in self.vocab:
+            return self.model.get_word_vector(entity)
+        else:
+            if self._enable_phrase_composition:
+                return self.encode_phrase(entity)
+            else:
+                return self.model.get_word_vector(entity)
 
     @property
     def n_dim(self):
         return self.model.get_dimension()
+
+    @property
+    def vocab(self):
+        return self._vocab
 
 
 class Word2VecDataset(AbstractWordEmbeddingsDataset):
@@ -167,13 +174,9 @@ class Word2VecDataset(AbstractWordEmbeddingsDataset):
         self.transform = transform
         self._enable_phrase_composition = enable_phrase_composition
         self._idx_to_word = self.model.index2word
-        self._n_sample = len(self.model.vocab)
 
         if enable_phrase_composition:
             self._init_mwe_tokenizer()
-
-    def __len__(self):
-        return self._n_sample
 
     def encode_phrase(self, phrase: str):
         lst_tokens = self.phrase_splitter(phrase)
