@@ -43,11 +43,14 @@ class WordEmbeddingsAndHyponymyDataset(IterableDataset):
         ratio = n_embeddings_used_in_epoch / n_embeddings
 
         balanced_embedding_batch_size = np.ceil((n_embeddings/(coef_effective_samples*n_iteration)) + 2*self._hyponymy_batch_size)
+        balanced_hyponymy_batch_size = np.ceil(n_hyponymy*self._embedding_batch_size*coef_effective_samples/(n_embeddings+2*coef_effective_samples*n_hyponymy))
 
+        print(f"hyponymy relatios: {n_hyponymy}")
         print(f"embeddings: {n_embeddings}")
-        print(f"embeddings used in epoch: {n_embeddings_used_in_epoch:.0f}")
+        print(f"embeddings referenced in epoch: {n_embeddings_used_in_epoch:.0f}")
         print(f"consumption ratio: {ratio:2.3f}")
         print(f"balanced `embedding_batch_size` value: {balanced_embedding_batch_size:.0f}")
+        print(f"balanced `hyponymy_batch_size` value: {balanced_hyponymy_batch_size:.0f}")
 
     def is_encodable_all(self, *tokens):
         return all([self._word_embeddings_dataset.is_encodable(token) for token in tokens])
@@ -98,3 +101,6 @@ class WordEmbeddingsAndHyponymyDataset(IterableDataset):
                 batch["hyponymy_relation_raw"] = batch_hyponymy_b
 
             yield batch
+
+    def n_samples(self):
+        return self._embedding_batch_size * int(np.ceil(len(self._hyponymy_dataset) / self._hyponymy_batch_size))
