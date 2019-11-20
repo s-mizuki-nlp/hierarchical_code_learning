@@ -48,7 +48,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
 
     def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int,
                  n_dim_hidden: Optional[int] = None,
-                 dtype=torch.float32, **kwargs_for_code_length_estimator):
+                 dtype=torch.float32, **kwargs_for_code_length_predictor):
 
         super(SimpleEncoder, self).__init__()
 
@@ -58,15 +58,15 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         self._n_ary = n_ary
         self._dtype = dtype
 
-        self._build(**kwargs_for_code_length_estimator)
+        self._build(**kwargs_for_code_length_predictor)
 
-    def _build(self, **kwargs_for_code_length_estimator):
+    def _build(self, **kwargs_for_code_length_predictor):
 
         self.x_to_h = nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden)
-        self.lst_h_to_z_nonzero = nn.ModuleList([nn.Linear(in_features=self._n_dim_hidden, out_features=self._n_ary) for n in range(self._n_digits-1)])
+        self.lst_h_to_z_nonzero = nn.ModuleList([nn.Linear(in_features=self._n_dim_hidden, out_features=self._n_ary-1) for n in range(self._n_digits)])
 
-        self.code_length_estimator = SoftmaxBasedCDFEstimator(n_dim_input=self._n_dim_emb, n_output=self._n_digits, dtype=self._dtype,
-                                                              **kwargs_for_code_length_estimator)
+        self.code_length_predictor = SoftmaxBasedCDFEstimator(n_dim_input=self._n_dim_emb, n_output=self._n_digits, dtype=self._dtype,
+                                                              **kwargs_for_code_length_predictor)
 
     def forward(self, input_x: torch.Tensor):
 
@@ -80,7 +80,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
 
         # zero probability: p(c_n=0 | x_b)
         # t_prob_c_zero: (N_batch, N_digits) -> (N_batch, N_digits, 1)
-        t_prob_c_zero = self.code_length_estimator.forward(input_x)
+        t_prob_c_zero = self.code_length_predictor.forward(input_x)
         t_prob_c_zero = t_prob_c_zero.unsqueeze(-1)
 
         # t_prob_c_zero: (N_batch, N_digits, N_ary)
