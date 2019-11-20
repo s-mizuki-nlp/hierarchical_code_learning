@@ -20,7 +20,7 @@ cfg_hyponymy_relation_datasets = {
         "header": True,
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "distance":2, "pos": 3},
-        # "transform": _distance_str_to_float,
+        "transform": _distance_str_to_float,
         "description": "WordNet-hyponymy relation dataset: noun",
     },
     "WordNet-hyponymy-verb": {
@@ -28,7 +28,7 @@ cfg_hyponymy_relation_datasets = {
         "header": True,
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "distance":2, "pos": 3},
-        # "transform": _distance_str_to_float,
+        "transform": _distance_str_to_float,
         "description": "WordNet-hyponymy relation dataset: verb",
     },
     "WordNet-hyponymy-noun-verb": {
@@ -36,7 +36,7 @@ cfg_hyponymy_relation_datasets = {
         "header": True,
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "distance":2, "pos": 3},
-        # "transform": _distance_str_to_float,
+        "transform": _distance_str_to_float,
         "description": "WordNet-hyponymy relation dataset: noun and verb",
     }
 }
