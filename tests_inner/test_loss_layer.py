@@ -53,7 +53,7 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         self._t_arry_p_batch = torch.from_numpy(self._arry_p_batch)
 
         self._normalize_by_digits = True
-        self._loss_layer = HyponymyScoreLoss(normalize_by_digits=self._normalize_by_digits)
+        self._loss_layer = HyponymyScoreLoss(normalize_hyponymy_score=self._normalize_by_digits)
 
     def test_intensity_to_probability(self):
 
