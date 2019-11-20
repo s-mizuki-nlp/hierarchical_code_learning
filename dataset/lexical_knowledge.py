@@ -6,7 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os, sys, io
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Callable, Optional, Any
 import torch
 from torch.utils.data import Dataset
 
@@ -38,21 +38,18 @@ class HyponymyDataset(Dataset):
             ret = list(filter(bool, [record.strip() for record in ifs]))
         return ret
 
-    def _extract_distinct_values(self, column_name):
-        if column_name not in self._columns:
-            return []
+    def _apply(self, apply_column_name: str, apply_function: Callable, default_return_value: Optional[Any] = None):
+        if apply_column_name not in self._columns:
+            return default_return_value
 
         _transform_cache = self.transform
         self.transform = None
 
-        set_entry = set()
-        for entry in self:
-            set_entry.add(entry.get(column_name, None))
-
-        distinct_values = list(filter(bool, list(set_entry)))
+        it = (entry.get(apply_column_name, None) for entry in self)
+        ret =  apply_function(filter(bool, it))
 
         self.transform = _transform_cache
-        return distinct_values
+        return ret
 
     def _test_case_sensitive(self, column_name):
         if column_name not in self._columns:
@@ -85,11 +82,11 @@ class HyponymyDataset(Dataset):
 
     @property
     def relations(self) -> List[str]:
-        return self._extract_distinct_values("relation")
+        return self._apply(apply_column_name="relation", apply_function=lambda it: list(set(it)), default_return_value=[])
 
     @property
     def classification_labels(self) -> List[str]:
-        return self._extract_distinct_values("is_hyponymy")
+        return self._apply(apply_column_name="is_hyponymy", apply_function=lambda it: list(set(it)), default_return_value=[])
 
     @property
     def is_case_sensitive(self):
@@ -100,6 +97,10 @@ class HyponymyDataset(Dataset):
             is_hyper_case_sensitive = self._test_case_sensitive("hypernym")
             ret = is_hypo_case_sensitive | is_hyper_case_sensitive
         return ret
+
+    @property
+    def max_distance(self):
+        return self._apply(apply_column_name="distance", apply_function=lambda it: max(map(int,it)), default_return_value=None)
 
     @property
     def has_phrase(self):
