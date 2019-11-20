@@ -77,48 +77,95 @@ class MutualInformationLoss(L._Loss):
 
         return - self._scale * mutual_info
 
+    @property
+    def scale(self):
+        return self._scale
+
 
 ### supervised loss classes ###
 
 class CodeLengthPredictionLoss(L._Loss):
 
-    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean'):
+    def __init__(self, scale: float = 1.0, normalize_code_length: bool = True, normalize_coefficient_for_ground_truth: float = 1.0,
+                 size_average=None, reduce=None, reduction='mean'):
 
         super(CodeLengthPredictionLoss, self).__init__(size_average, reduce, reduction)
 
         self._scale = scale
-        self._mse_loss = L.MSELoss(reduction=reduction)
-
-    def forward(self, t_prob_c_zero: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """
-        evaluates L2 loss of the predicted code length and true code length in a normalized scale.
-
-        :param t_prob_c_zero: probability array of p(c_n=0|x)
-        :param y_true: true code length which is normalized to [0,1] range
-        """
-
-        # t_prob_c_zero: (N_b, N_digits); t_prob_c_zero[b,n] = p(c_n=0|x_b)
-        # y_pred: (N_b,)
-        # y_true: (N_b,)
-        y_pred = torch.mean(1.0 - t_prob_c_zero, dim=-1)
-        loss = self._mse_loss(y_pred, y_true)
-
-        return loss * self._scale
-
-
-class HyponymyScoreLoss(L._Loss):
-
-    def __init__(self, scale: float = 1.0, normalize_by_digits: bool = True, size_average=None, reduce=None, reduction='mean') -> "HyponymyScoreLoss":
-
-        super(HyponymyScoreLoss, self).__init__(size_average, reduce, reduction)
-
-        self._scale = scale
-        self._normalize_by_digits = normalize_by_digits
+        self._normalize_code_length = normalize_code_length
+        self._normalize_coef_for_gt = normalize_coefficient_for_ground_truth
         self._mse_loss = L.MSELoss(reduction=reduction)
 
     def _dtype_and_device(self, t: torch.Tensor):
         return t.dtype, t.device
 
+    def _intensity_to_probability(self, t_intensity):
+        # t_intensity can be either one or two dimensional tensor.
+        dtype, device = self._dtype_and_device(t_intensity)
+        pad_shape = t_intensity.shape[:-1] + (1,)
+
+        t_pad_begin = torch.zeros(pad_shape, dtype=dtype, device=device)
+        t_pad_end = torch.ones(pad_shape, dtype=dtype, device=device)
+
+        t_prob = torch.cumprod(1.0 - torch.cat((t_pad_begin, t_intensity), dim=-1), dim=-1) * torch.cat((t_intensity, t_pad_end), dim=-1)
+
+        return t_prob
+
+    def calc_soft_code_length(self, t_prob_c: torch.Tensor):
+        t_p_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0)).squeeze()
+        n_digits = t_p_c_zero.shape[-1]
+        dtype, device = self._dtype_and_device(t_prob_c)
+
+        t_p_at_n = self._intensity_to_probability(t_p_c_zero)
+        t_at_n = torch.arange(n_digits+1, dtype=dtype, device=device)
+
+        ret = torch.sum(t_p_at_n * t_at_n, dim=-1)
+        return ret
+
+    def forward(self, t_prob_c_batch: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        """
+        evaluates L2 loss of the predicted code length and true code length in a normalized scale.
+
+        :param t_prob_c_batch: probability array of p(c_n=m|x); (n_batch, n_digits, n_ary)
+        :param y_true: true code length; (n_batch,)
+        """
+
+        # t_prob_c_batch: (N_b, N_digits, N_ary); t_prob_c_batch[b,n,m] = p(c_n=m|x_b)
+        # y_pred: (N_b,)
+        # y_true: (N_b,)
+        y_pred = self.calc_soft_code_length(t_prob_c=t_prob_c_batch)
+
+        # scale ground-truth value and predicted value
+        if self._normalize_code_length:
+            # scale predicted value by the number of digits. then value range will be (-1, +1)
+            n_digits = t_prob_c_batch.shape[1]
+            y_pred /= n_digits
+            # scale ground-truth value by the user-specified value.
+            y_true *= self._normalize_coef_for_gt
+
+        loss = self._mse_loss(y_pred, y_true)
+
+        return loss * self._scale
+
+    @property
+    def scale(self):
+        return self._scale
+
+
+class HyponymyScoreLoss(L._Loss):
+
+    def __init__(self, scale: float = 1.0, normalize_hyponymy_score: bool = True, normalize_coefficient_for_ground_truth: float = 1.0,
+                 size_average=None, reduce=None, reduction='mean') -> "HyponymyScoreLoss":
+
+        super(HyponymyScoreLoss, self).__init__(size_average, reduce, reduction)
+
+        self._scale = scale
+        self._normalize_hyponymy_score = normalize_hyponymy_score
+        self._normalize_coef_for_gt = normalize_coefficient_for_ground_truth
+        self._mse_loss = L.MSELoss(reduction=reduction)
+
+    def _dtype_and_device(self, t: torch.Tensor):
+        return t.dtype, t.device
 
     def _intensity_to_probability(self, t_intensity):
         # t_intensity can be either one or two dimensional tensor.
@@ -178,31 +225,38 @@ class HyponymyScoreLoss(L._Loss):
 
         return cpl - hcl
 
-    def forward(self, t_prob_c_batch: torch.Tensor, lst_hyponym_tuple: List[Tuple[int,int,float]]) -> torch.Tensor:
+    def forward(self, t_prob_c_batch: torch.Tensor, lst_hyponymy_tuple: List[Tuple[int, int, float]]) -> torch.Tensor:
         """
         evaluates L2 loss of the predicted hyponymy score and true hyponymy score.
 
         :param t_prob_c_batch: probability array. shape: (n_batch, n_digits, n_ary), t_prob_c_batch[b,n,m] = p(c_n=m|x_b)
-        :param lst_hyponym_tuple: list of (hypernym index, hyponym index, hyponymy score) tuples
+        :param lst_hyponymy_tuple: list of (hypernym index, hyponym index, hyponymy score) tuples
         """
 
         # x: hypernym, y: hyponym
         dtype, device = self._dtype_and_device(t_prob_c_batch)
 
-        t_idx_x = torch.LongTensor([tup[0] for tup in lst_hyponym_tuple], device=device)
-        t_idx_y = torch.LongTensor([tup[1] for tup in lst_hyponym_tuple], device=device)
-        y_true = torch.FloatTensor([tup[2] for tup in lst_hyponym_tuple], device=device)
+        t_idx_x = torch.LongTensor([tup[0] for tup in lst_hyponymy_tuple], device=device)
+        t_idx_y = torch.LongTensor([tup[1] for tup in lst_hyponymy_tuple], device=device)
+        y_true = torch.FloatTensor([tup[2] for tup in lst_hyponymy_tuple], device=device)
 
         t_prob_c_x = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_x)
         t_prob_c_y = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_y)
 
         y_pred = self.calc_soft_hyponymy_score(t_prob_c_x, t_prob_c_y)
 
-        if self._normalize_by_digits:
+        # scale ground-truth value and predicted value
+        if self._normalize_hyponymy_score:
+            # scale predicted value by the number of digits. then value range will be (-1, +1)
             n_digits = t_prob_c_batch.shape[1]
-            y_true /= n_digits
             y_pred /= n_digits
+            # scale ground-truth value by the user-specified value.
+            y_true *= self._normalize_coef_for_gt
 
         loss = self._mse_loss(y_pred, y_true)
 
         return loss * self._scale
+
+    @property
+    def scale(self):
+        return self._scale
