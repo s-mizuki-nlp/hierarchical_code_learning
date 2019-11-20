@@ -117,22 +117,33 @@ class AutoEncoder(nn.Module):
 
 class MaskedAutoEncoder(AutoEncoder):
 
-    def __init__(self, encoder: nn.Module, decoder: nn.Module, discretizer: nn.Module, masked_values: List[int], normalize_output_length: bool = True, dtype=torch.float32, **kwargs):
+    def __init__(self, encoder: nn.Module, decoder: nn.Module, discretizer: nn.Module, masked_value: int = 0, normalize_output_length: bool = True, dtype=torch.float32, **kwargs):
+        """
 
+        :param encoder:
+        :param decoder:
+        :param discretizer:
+        :param masked_value: the code value that is masked (=ignored) during decoding process.
+            currently valid value is `0`, otherwise it will raise error.
+            in future, it may accept multiple values or digit-dependent values.
+        :param normalize_output_length:
+        :param dtype:
+        :param kwargs:
+        """
         if not normalize_output_length:
             warnings.warn("it is recommended to enable output length normalization.")
 
         super(MaskedAutoEncoder, self).__init__(encoder, decoder, discretizer, normalize_output_length, dtype)
 
-        self._masked_values = masked_values
-        self._mask = self._build_mask_tensor(masked_values=masked_values)
+        assert masked_value == 0, "currently `mased_value` must be `0`, otherwise it will raise error."
+        self._masked_value = masked_value
+        self._mask = self._build_mask_tensor(masked_value=masked_value)
 
-    def _build_mask_tensor(self, masked_values: List[int]):
+    def _build_mask_tensor(self, masked_value: int):
 
         mask_shape = (1, self.n_digits, self.n_ary)
         mask_tensor = torch.ones(mask_shape, dtype=self._dtype, requires_grad=False)
-        for value in masked_values:
-            mask_tensor[:,:,value] = 0.0
+        mask_tensor[:,:,masked_value] = 0.0
 
         return mask_tensor
 
