@@ -78,7 +78,7 @@ class SoftmaxBasedCDFEstimator(nn.Module):
 
         # linear transformation layers
         lst_mlp_layer = []
-        self.activation_function = F.relu
+        self.activation_function = F.tanh
         for idx in range(self._n_mlp_layer):
             n_in = self._n_dim_input if idx == 0 else self._n_dim_hidden
             n_out = self._n_output + 1 if idx == (self._n_mlp_layer - 1) else self._n_dim_hidden
@@ -97,7 +97,7 @@ class SoftmaxBasedCDFEstimator(nn.Module):
                 t_z = mlp_layer.forward(t_z)
 
         # probs: (N_b, N_out)
-        probs = torch.cumsum(F.softmax(t_z, dim=-1)[:,:self._n_output], dim=-1)
+        probs = torch.cumsum(F.softmax(t_z, dim=-1), dim=-1)[:,:self._n_output]
 
         return probs
 
