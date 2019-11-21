@@ -49,10 +49,13 @@ class WordEmbeddingsAndHyponymyDatasetTestCases(unittest.TestCase):
                                                         embedding_batch_size=10, hyponymy_batch_size=2, verbose=True, shuffle=True)
         cls._dataloader = DataLoader(cls._dataset, batch_size=None, collate_fn=lambda v: v)
 
+        idx_max = len(cls._dataset) - 1
+        cls._batch = cls._dataset[idx_max // 2]
+
     def test_batch_fields(self):
 
-        batch = next(iter(self._dataloader))
-
+        batch = self._batch
+        # batch = next(iter(self._dataloader))
         required_fieid_names = "embedding,entity,hyponymy_relation".split(",")
         for field_name in required_fieid_names:
             with self.subTest(field_name=field_name):
@@ -60,7 +63,8 @@ class WordEmbeddingsAndHyponymyDatasetTestCases(unittest.TestCase):
 
     def test_batch_field_size(self):
 
-        batch = next(iter(self._dataloader))
+        batch = self._batch
+        # batch = next(iter(self._dataloader))
         embedding = batch["embedding"]
         entity = batch["entity"]
         hyponymy_relation = batch["hyponymy_relation"]
@@ -74,7 +78,8 @@ class WordEmbeddingsAndHyponymyDatasetTestCases(unittest.TestCase):
 
     def test_batch_entity_consistency(self):
 
-        batch = next(iter(self._dataloader))
+        batch = self._batch
+        # batch = next(iter(self._dataloader))
         embedding = batch["embedding"]
         entity = batch["entity"]
         hyponymy_relation = batch["hyponymy_relation"]

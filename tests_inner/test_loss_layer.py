@@ -52,8 +52,10 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         self._t_arry_p_y = torch.from_numpy(self._arry_p_y)
         self._t_arry_p_batch = torch.from_numpy(self._arry_p_batch)
 
-        self._normalize_by_digits = True
-        self._loss_layer = HyponymyScoreLoss(normalize_hyponymy_score=self._normalize_by_digits)
+        self._normalize_code_length = True
+        self._normalize_coefficient_for_ground_truth = 1/3.0
+        self._loss_layer = HyponymyScoreLoss(normalize_hyponymy_score=self._normalize_code_length,
+                                             normalize_coefficient_for_ground_truth=self._normalize_coefficient_for_ground_truth)
 
     def test_intensity_to_probability(self):
 
@@ -150,10 +152,10 @@ class HyponymyScoreLossLayer(unittest.TestCase):
 
         y_pred = np.array([utils.calc_soft_hyponymy_score(mat_x, mat_y) for mat_x, mat_y in zip(arry_test_x, arry_test_y)])
 
-        if self._normalize_by_digits:
-            expected = np.mean(((y_pred - y_true)/self._n_digits)**2) # normalized L2 loss
-        else:
-            expected = np.mean((y_pred - y_true)**2) # L2 loss
+        if self._normalize_code_length:
+            y_pred /= self._n_digits
+            y_true *= self._normalize_coefficient_for_ground_truth
+        expected = np.mean((y_pred - y_true)**2) # L2 loss
         actual = self._loss_layer.forward(t_test, lst_train)
 
         self.assertTrue(np.allclose(expected, actual))
