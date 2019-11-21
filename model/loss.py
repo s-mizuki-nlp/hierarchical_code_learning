@@ -29,7 +29,7 @@ class ReconstructionLoss(L._Loss):
 
 class MutualInformationLoss(L._Loss):
 
-    __EPS = 1E-5
+    _EPS = 1E-5
 
     def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='elementwise_mean'):
         """
@@ -53,7 +53,7 @@ class MutualInformationLoss(L._Loss):
         """
 
         def _p_log_p(_probs):
-            return - _probs * torch.log(_probs+self.__EPS)
+            return - _probs * torch.log(_probs+self._EPS)
 
         ent = _p_log_p(probs) + _p_log_p(1.0 - probs)
         return ent
