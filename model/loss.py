@@ -58,10 +58,11 @@ class MutualInformationLoss(L._Loss):
         ent = _p_log_p(probs) + _p_log_p(1.0 - probs)
         return ent
 
-    def forward(self, t_prob_c_zero: torch.Tensor):
+    def forward(self, t_prob_c: torch.Tensor):
 
         # t_prob_c_zero: (N_b, N_digits); t_prob_c_zero[b,n] = {p(c_n=0|x_b)}
         # t_prob_c_zero_mean: (N_digits,)
+        t_prob_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0)).squeeze()
         t_prob_c_zero_mean = torch.mean(t_prob_c_zero, dim=0, keepdim=False)
 
         # total_entropy: (N_digits,)
@@ -155,6 +156,7 @@ class CodeLengthPredictionLoss(L._Loss):
 class HyponymyScoreLoss(L._Loss):
 
     def __init__(self, scale: float = 1.0, normalize_hyponymy_score: bool = True, normalize_coefficient_for_ground_truth: float = 1.0,
+                 distance_metric: str = "mse",
                  size_average=None, reduce=None, reduction='mean') -> "HyponymyScoreLoss":
 
         super(HyponymyScoreLoss, self).__init__(size_average, reduce, reduction)
@@ -162,10 +164,19 @@ class HyponymyScoreLoss(L._Loss):
         self._scale = scale
         self._normalize_hyponymy_score = normalize_hyponymy_score
         self._normalize_coef_for_gt = normalize_coefficient_for_ground_truth
-        self._mse_loss = L.MSELoss(reduction=reduction)
+        self._distance_metric = distance_metric
+        if distance_metric == "mse":
+            self._func_distance = L.MSELoss(reduction=reduction)
+        elif distance_metric == "cosine":
+            self._func_distance = self._cosine_distance
+        else:
+            raise AttributeError(f"unsupported distance metric was specified: {distance_metric}")
 
     def _dtype_and_device(self, t: torch.Tensor):
         return t.dtype, t.device
+
+    def _cosine_distance(self, u, v, dim=0, eps=1e-8) -> torch.Tensor:
+        return 1.0 - F.cosine_similarity(u, v, dim, eps)
 
     def _intensity_to_probability(self, t_intensity):
         # t_intensity can be either one or two dimensional tensor.
@@ -253,7 +264,7 @@ class HyponymyScoreLoss(L._Loss):
             # scale ground-truth value by the user-specified value.
             y_true *= self._normalize_coef_for_gt
 
-        loss = self._mse_loss(y_pred, y_true)
+        loss = self._func_distance(y_pred, y_true)
 
         return loss * self._scale
 
