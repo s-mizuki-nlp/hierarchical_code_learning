@@ -7,6 +7,8 @@ from torch import nn
 from torch.nn import functional as F
 from entmax.activations import entmax15, sparsemax
 
+_EPS = 1E-6
+
 class StraightThroughEstimator(nn.Module):
 
     def __init__(self, add_gumbel_noise: bool = False, temperature: float = 1.0):
@@ -17,7 +19,7 @@ class StraightThroughEstimator(nn.Module):
     def forward(self, probs, dim: int = -1):
 
         if self._add_gumbel_noise:
-            logits = torch.log(probs)
+            logits = torch.log(probs+_EPS)
             output = F.gumbel_softmax(logits=logits, tau=self._temperature, hard=True, dim=dim)
             return output
 
@@ -42,7 +44,7 @@ class GumbelSoftmax(nn.Module):
 
     def forward(self, probs, dim: int = -1):
 
-        logits = torch.log(probs)
+        logits = torch.log(probs+_EPS)
 
         if self._add_gumbel_noise:
             return F.gumbel_softmax(logits=logits, tau=self._temperature, hard=False, dim=dim)
@@ -64,7 +66,7 @@ class Entmax15Estimator(nn.Module):
         return gumbels
 
     def forward(self, probs, dim: int = -1):
-        logits = torch.log(probs)
+        logits = torch.log(probs+_EPS)
         if self._add_gumbel_noise:
             logits = self._gumbel_noise(logits=logits)
 
@@ -84,7 +86,7 @@ class SparsemaxEstimator(nn.Module):
         return gumbels
 
     def forward(self, probs, dim: int = -1):
-        logits = torch.log(probs)
+        logits = torch.log(probs+_EPS)
         if self._add_gumbel_noise:
             logits = self._gumbel_noise(logits=logits)
 
