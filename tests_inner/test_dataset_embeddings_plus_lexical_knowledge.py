@@ -102,6 +102,6 @@ class WordEmbeddingsAndHyponymyDatasetTestCases(unittest.TestCase):
                     self.assertTrue(np.array_equal(vec_e, vec_e_gt))
 
                 with self.subTest(hyponym=hyponym, hypernym=hypernym):
-                    entry = (idx_hypo, idx_hyper, distance)
+                    entry = (idx_hyper, idx_hypo, distance)
                     found = any([entry == hyponymy for hyponymy in hyponymy_relation])
                     self.assertTrue(found)

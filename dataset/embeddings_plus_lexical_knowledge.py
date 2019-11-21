@@ -84,7 +84,7 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
             idx_hypo = token_to_index[hyponymy["hyponym"]]
             idx_hyper = token_to_index[hyponymy["hypernym"]]
             distance = hyponymy["distance"]
-            lst_hyponymy_relation.append((idx_hypo, idx_hyper, distance))
+            lst_hyponymy_relation.append((idx_hyper, idx_hypo, distance))
 
         batch = {
             "embedding": mat_embeddings,
