@@ -141,9 +141,15 @@ class HyponymyDataset(Dataset):
             idx = idx.tolist()
 
         s_entry = self._lst_samples[idx]
-        entry = self._preprocess(s_entry)
-        if self.transform is not None:
-            entry = self.transform(entry)
+        if isinstance(s_entry, str):
+            entry = self._preprocess(s_entry)
+            if self.transform is not None:
+                entry = self.transform(entry)
+        elif isinstance(s_entry, list):
+            entry = map(self._preprocess, s_entry)
+            if self.transform is not None:
+                entry = map(self.transform, entry)
+            entry = list(entry)
 
         return entry
 
