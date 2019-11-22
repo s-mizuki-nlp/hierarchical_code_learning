@@ -159,8 +159,8 @@ class CodeLengthPredictionLoss(L._Loss):
 
 class HyponymyScoreLoss(L._Loss):
 
-    def __init__(self, scale: float = 1.0, normalize_hyponymy_score: bool = True, normalize_coefficient_for_ground_truth: float = 1.0,
-                 distance_metric: str = "mse",
+    def __init__(self, scale: float = 1.0, normalize_hyponymy_score: bool = False, normalize_coefficient_for_ground_truth: float = 1.0,
+                 distance_metric: str = "scaled-mse",
                  size_average=None, reduce=None, reduction='mean') -> "HyponymyScoreLoss":
 
         super(HyponymyScoreLoss, self).__init__(size_average, reduce, reduction)
@@ -171,6 +171,13 @@ class HyponymyScoreLoss(L._Loss):
         self._distance_metric = distance_metric
         if distance_metric == "mse":
             self._func_distance = L.MSELoss(reduction=reduction)
+        elif distance_metric == "scaled-mse":
+            self._func_distance = self._scaled_mse
+        elif distance_metric == "standardized-mse":
+            self._func_distance = self._standardized_mse
+        elif distance_metric == "batchnorm-mse":
+            self._func_distance = self._batchnorm_mse
+            self._m = nn.BatchNorm1d(1)
         elif distance_metric == "cosine":
             self._func_distance = self._cosine_distance
         else:
@@ -178,6 +185,21 @@ class HyponymyScoreLoss(L._Loss):
 
     def _dtype_and_device(self, t: torch.Tensor):
         return t.dtype, t.device
+
+    def _standardize(self, vec: torch.Tensor, dim=-1):
+        means = vec.mean(dim=dim, keepdim=True)
+        stds = vec.std(dim=dim, keepdim=True)
+        return (vec - means) / (stds + 1E-6)
+
+    def _scale_dynamic(self, vec: torch.Tensor, dim=-1):
+        stds = vec.std(dim=dim, keepdim=True)
+        return vec / (stds + 1E-6)
+
+    def _scaled_mse(self, u, v) -> torch.Tensor:
+        return F.mse_loss(self._scale_dynamic(u), self._scale_dynamic(v), reduction=self.reduction)
+
+    def _standardized_mse(self, u, v) -> torch.Tensor:
+        return F.mse_loss(self._standardize(u), self._standardize(v), reduction=self.reduction)
 
     def _cosine_distance(self, u, v, dim=0, eps=1e-8) -> torch.Tensor:
         return 1.0 - F.cosine_similarity(u, v, dim, eps)
