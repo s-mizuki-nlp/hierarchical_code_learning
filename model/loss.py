@@ -25,6 +25,9 @@ class ReconstructionLoss(L._Loss):
     def forward(self, t_x_dash, t_x):
         return self._mse_loss.forward(t_x_dash, t_x) * self._scale
 
+    @property
+    def scale(self):
+        return self._scale
 
 ### unsupervised loss classes ###
 
