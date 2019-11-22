@@ -62,14 +62,22 @@ class OrdinalLogisticRegressionBasedCDFEstimator(nn.Module):
 class SoftmaxBasedCDFEstimator(nn.Module):
 
     def __init__(self, n_dim_input: int, n_output: int,
-                 n_dim_hidden: Optional[int] = None, n_mlp_layer: Optional[int] = 3, dtype=torch.float32):
+                 n_dim_hidden: Optional[int] = None, n_mlp_layer: Optional[int] = 3,
+                 assign_nonzero_value_on_most_significant_digit: bool = True,
+                 dtype=torch.float32):
 
         super(SoftmaxBasedCDFEstimator, self).__init__()
 
         self._n_dim_input = n_dim_input
         self._n_output = n_output
+        if assign_nonzero_value_on_most_significant_digit:
+            self._n_output_softmax = n_output
+        else:
+            self._n_output_softmax = n_output + 1
+
         self._n_dim_hidden = int(n_output * n_dim_input // 2) if n_dim_hidden is None else n_dim_hidden
         self._n_mlp_layer = n_mlp_layer
+        self._msd_nonzero = assign_nonzero_value_on_most_significant_digit
         self._dtype = dtype
 
         self._build()
@@ -79,9 +87,10 @@ class SoftmaxBasedCDFEstimator(nn.Module):
         # linear transformation layers
         lst_mlp_layer = []
         self.activation_function = torch.tanh
+
         for idx in range(self._n_mlp_layer):
             n_in = self._n_dim_input if idx == 0 else self._n_dim_hidden
-            n_out = self._n_output + 1 if idx == (self._n_mlp_layer - 1) else self._n_dim_hidden
+            n_out = self._n_output_softmax if idx == (self._n_mlp_layer - 1) else self._n_dim_hidden
             layer = nn.Linear(in_features=n_in, out_features=n_out)
             lst_mlp_layer.append(layer)
         self.lst_mlp_layer = nn.ModuleList(lst_mlp_layer)
@@ -97,7 +106,12 @@ class SoftmaxBasedCDFEstimator(nn.Module):
                 t_z = mlp_layer.forward(t_z)
 
         # probs: (N_b, N_out)
-        probs = torch.cumsum(F.softmax(t_z, dim=-1), dim=-1)[:,:self._n_output]
+        probs = torch.cumsum(F.softmax(t_z, dim=-1), dim=-1)[:,:(self._n_output_softmax - 1)]
+        if self._msd_nonzero:
+            device = input_x.device
+            n_batch = input_x.shape[0]
+            pad_tensor = torch.ones((n_batch, 1), dtype=self._dtype, device=device) * 1E-6
+            probs = torch.cat((pad_tensor, probs), dim=-1)
 
         return probs
 
