@@ -11,7 +11,7 @@ from torch.nn.modules import loss as L
 
 class ReconstructionLoss(L._Loss):
 
-    def __init__(self, size_average=None, reduce=None, reduction='mean'):
+    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean'):
         """
         reconstruction loss.
         :return L2(x, x')
@@ -20,9 +20,10 @@ class ReconstructionLoss(L._Loss):
         super(ReconstructionLoss, self).__init__(size_average, reduce, reduction)
         # sample-wise & element-wise mean
         self._mse_loss = L.MSELoss(reduction=reduction)
+        self._scale = scale
 
     def forward(self, t_x_dash, t_x):
-        return self._mse_loss.forward(t_x_dash, t_x)
+        return self._mse_loss.forward(t_x_dash, t_x) * self._scale
 
 
 ### unsupervised loss classes ###
