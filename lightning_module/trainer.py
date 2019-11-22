@@ -82,20 +82,21 @@ class UnsupervisedTrainer(pl.LightningModule):
         else:
             loss_mi = torch.tensor(0.0, dtype=torch.float32)
 
-        loss = loss_reconst + self._coef_loss_mutual_info * loss_mi
+        loss = loss_reconst + loss_mi
 
         dict_losses = {
-            "loss_reconst": float(loss_reconst),
-            "mutual_info": float(loss_mi),
+            "loss_reconst": loss_reconst,
+            "loss_mutual_info": loss_mi,
             "loss": loss
         }
         return dict_losses
 
     def _evaluate_code_stats(self, t_code_prob):
 
+        _EPS = 1E-6
         n_ary = self._model.n_ary
         soft_code_length = self._auxiliary.calc_soft_code_length(t_code_prob)
-        code_probability_divergence = torch.mean(np.log(n_ary) + torch.sum(t_code_prob * torch.log(t_code_prob), axis=-1), axis=-1)
+        code_probability_divergence = torch.mean(np.log(n_ary) + torch.sum(t_code_prob * torch.log(t_code_prob + _EPS), axis=-1), axis=-1)
 
         metrics = {
             "val_soft_code_length_mean":torch.mean(soft_code_length),
@@ -128,19 +129,18 @@ class UnsupervisedTrainer(pl.LightningModule):
             metrics_repr = self._evaluate_code_stats(t_code_prob)
             metrics.update(metrics_repr)
 
-        return metrics
+        return {"val_loss":loss, "log":metrics}
 
     def validation_end(self, outputs):
+        avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
 
-        tqdm_dic = defaultdict(float)
+        avg_metrics = defaultdict(list)
         for output in outputs:
-            for variable, value in output.items():
-                tqdm_dic[variable] += value.item()
-        n_output = len(outputs)
-        for variable in output.keys():
-            tqdm_dic[variable] /= n_output
-
-        return tqdm_dic
+            for key, value in output["log"].items():
+                avg_metrics[key].append(value)
+        for key, values in avg_metrics.items():
+            avg_metrics[key] = torch.stack(values).mean()
+        return {'avg_val_loss': avg_loss, 'log': avg_metrics}
 
     def on_save_checkpoint(self, checkpoint):
         checkpoint["model_dump"] = pickle.dumps(self._model)
@@ -168,6 +168,7 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
                  model: MaskedAutoEncoder,
                  loss_reconst: ReconstructionLoss,
                  loss_hyponymy: HyponymyScoreLoss,
+                 use_intermediate_repr_for_hyponymy_score: bool = False,
                  loss_mutual_info: Optional[_Loss] = None,
                  dataloader_train: Optional[DataLoader] = None,
                  dataloader_val: Optional[DataLoader] = None,
@@ -178,6 +179,11 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         super(SupervisedHypernymyRelationTrainer, self).__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate)
 
         self._loss_hyponymy = loss_hyponymy
+        self._use_intermediate_repr_for_hyponymy_score = use_intermediate_repr_for_hyponymy_score
+
+        self._scale_loss_reconst = loss_reconst.scale
+        self._scale_loss_mi = loss_mutual_info.scale if loss_mutual_info is not None else 1.
+        self._scale_loss_hyponymy = loss_hyponymy.scale
 
     def training_step(self, data_batch, batch_nb):
 
@@ -186,8 +192,12 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         lst_tup_hyponymy = data_batch["hyponymy_relation"]
         t_latent_code, t_code_prob, t_x_dash = self._model.forward(t_x)
 
-        loss_reconst = self._loss_reconst.forward(t_x_dash, t_x)
-        loss_hyponymy = self._loss_hyponymy(t_code_prob, lst_tup_hyponymy)
+        loss_reconst = self._loss_reconst(t_x_dash, t_x)
+
+        if self._use_intermediate_repr_for_hyponymy_score:
+            loss_hyponymy = self._loss_hyponymy(t_latent_code, lst_tup_hyponymy)
+        else:
+            loss_hyponymy = self._loss_hyponymy(t_code_prob, lst_tup_hyponymy)
 
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
@@ -197,12 +207,12 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         loss = loss_reconst + loss_hyponymy + loss_mi
 
         dict_losses = {
-            "loss_reconst": float(loss_reconst),
-            "loss_mutual_info": float(loss_mi),
-            "loss_hyponymy": float(loss_hyponymy),
-            "loss": loss
+            "train_loss_reconst": loss_reconst,
+            "train_loss_mutual_info": loss_mi / self._scale_loss_mi,
+            "train_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
+            "train_loss": loss
         }
-        return dict_losses
+        return {"loss":loss, "log": dict_losses}
 
     def validation_step(self, data_batch, batch_nb):
 
@@ -212,7 +222,12 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         t_intermediate, t_code_prob, t_x_dash = self._model._predict(t_x)
 
         loss_reconst = self._loss_reconst(t_x_dash, t_x)
-        loss_hyponymy = self._loss_hyponymy(t_code_prob, lst_tup_hyponymy)
+
+        if self._use_intermediate_repr_for_hyponymy_score:
+            loss_hyponymy = self._loss_hyponymy(t_intermediate, lst_tup_hyponymy)
+        else:
+            loss_hyponymy = self._loss_hyponymy(t_code_prob, lst_tup_hyponymy)
+
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
         else:
@@ -222,14 +237,14 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
 
         metrics = {
             "val_loss_reconst": loss_reconst,
-            "val_loss_mutual_info": loss_mi,
-            "val_loss_hyponymy": loss_hyponymy,
+            "val_loss_mutual_info": loss_mi / self._scale_loss_mi,
+            "val_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
             "val_loss": loss
         }
         metrics_repr = self._evaluate_code_stats(t_code_prob)
         metrics.update(metrics_repr)
 
-        return metrics
+        return {"val_loss":loss, "log":metrics}
 
 
 class SupervisedCodeLengthTrainer(UnsupervisedTrainer):
