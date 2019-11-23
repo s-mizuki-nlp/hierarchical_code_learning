@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
-import io, os
-from typing import Union, Collection, Optional
+import io, os, json
+from typing import Union, Collection, Optional, Dict, Any
 
 from abc import ABCMeta, abstractmethod
 
@@ -18,6 +18,7 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
     _PHRASE_DELIMITER = "_"
     _idx_to_word = {}
     transform = None
+    _entity_info = None
 
     def phrase_splitter(self, phrase: str):
         return self._mwe_tokenizer.tokenize(phrase.split(self._PHRASE_DELIMITER))
@@ -53,6 +54,13 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
     def n_dim(self):
         pass
 
+    @property
+    def keys(self):
+        if self._entity_info is not None:
+            return ("entity", "embedding", "entity_info")
+        else:
+            return ("entity", "embedding")
+
     def __getitem__(self, key: Union[torch.Tensor, int, str]):
         if torch.is_tensor(key):
             key = key.tolist()
@@ -68,6 +76,8 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
         assert embedding is not None, f"string `{word}` cannot be encoded."
 
         sample = {"entity":word, "embedding":embedding}
+        if isinstance(self._entity_info, dict):
+            sample["entity_info"] = self._entity_info[word]
 
         if self.transform is not None:
             sample = self.transform(sample)
@@ -81,6 +91,8 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
 class GeneralPurposeEmbeddingsDataset(AbstractWordEmbeddingsDataset):
 
     def __init__(self, path_numpy_array_binary_format: str, path_vocabulary_text: str,
+                 path_vocabulary_information_json: Optional[str] = None,
+                 dict_vocabulary_information: Optional[Dict[str, Any]] = None,
                  enable_phrase_composition:bool = False, transform=None):
 
         self.embedding = np.load(path_numpy_array_binary_format)
@@ -94,12 +106,34 @@ class GeneralPurposeEmbeddingsDataset(AbstractWordEmbeddingsDataset):
         if enable_phrase_composition:
             self._init_mwe_tokenizer()
 
+        # load entity information
+        if path_vocabulary_information_json is not None:
+            self._entity_info = self._load_vocabulary_information(path_vocabulary_information_json, key_field_name="entity")
+        elif isinstance(dict_vocabulary_information, dict):
+            self._entity_info = dict_vocabulary_information
+        else:
+            self._entity_info = None
+        self._assert_vocabulary_information()
+
     def _load_vocabulary_text(self, path_vocabulary_text: str):
         lst_v = []
         with io.open(path_vocabulary_text, mode="r") as ifs:
             for s in ifs:
                 lst_v.append(s.strip())
         return lst_v
+
+    def _load_vocabulary_information(self, path_vocabulary_information: str, key_field_name):
+        dict_ret = {}
+        with io.open(path_vocabulary_information, mode="r") as ifs:
+            for s_entity in ifs:
+                entity = json.loads(s_entity.strip())
+                key = entity[key_field_name]
+                dict_ret[key] = entity
+        return dict_ret
+
+    def _assert_vocabulary_information(self):
+        if self._entity_info is not None:
+            assert set(self._entity_to_idx.keys()) == set(self._entity_info.keys())
 
     def encode(self, entity):
         if entity in self.vocab:
@@ -174,12 +208,16 @@ class Word2VecDataset(AbstractWordEmbeddingsDataset):
                  enable_phrase_composition=True, **kwargs):
 
         assert os.path.exists(path_word2vec_format), f"file not found: {path_word2vec_format}"
-        self.model = KeyedVectors.load_word2vec_format(path_word2vec_format, binary=binary, **kwargs)
+        if "mmap" in kwargs:
+            self.model = KeyedVectors.load(path_word2vec_format, **kwargs)
+            self.model = self.model.wv # KeyedVectors class
+        else:
+            self.model = KeyedVectors.load_word2vec_format(path_word2vec_format, binary=binary, **kwargs)
         if init_sims:
             self.model.init_sims(replace=True)
+        self._idx_to_word = self.model.index2word
         self.transform = transform
         self._enable_phrase_composition = enable_phrase_composition
-        self._idx_to_word = self.model.index2word
 
         if enable_phrase_composition:
             self._init_mwe_tokenizer()
