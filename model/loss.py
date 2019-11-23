@@ -180,6 +180,8 @@ class HyponymyScoreLoss(L._Loss):
             self._m = nn.BatchNorm1d(1)
         elif distance_metric == "cosine":
             self._func_distance = self._cosine_distance
+        elif distance_metric == "hinge":
+            self._func_distance = self._hinge_distance
         else:
             raise AttributeError(f"unsupported distance metric was specified: {distance_metric}")
 
@@ -203,6 +205,9 @@ class HyponymyScoreLoss(L._Loss):
 
     def _cosine_distance(self, u, v, dim=0, eps=1e-8) -> torch.Tensor:
         return 1.0 - F.cosine_similarity(u, v, dim, eps)
+
+    def _hinge_distance(self, y_pred, y_true) -> torch.Tensor:
+        return F.relu(y_true - y_pred)
 
     def _intensity_to_probability(self, t_intensity):
         # t_intensity can be either one or two dimensional tensor.
