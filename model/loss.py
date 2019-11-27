@@ -161,7 +161,7 @@ class HyponymyScoreLoss(L._Loss):
 
     def __init__(self, scale: float = 1.0, normalize_hyponymy_score: bool = False, normalize_coefficient_for_ground_truth: float = 1.0,
                  distance_metric: str = "scaled-mse",
-                 size_average=None, reduce=None, reduction='mean') -> "HyponymyScoreLoss":
+                 size_average=None, reduce=None, reduction='mean') -> None:
 
         super(HyponymyScoreLoss, self).__init__(size_average, reduce, reduction)
 
