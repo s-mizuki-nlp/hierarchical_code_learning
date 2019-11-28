@@ -29,25 +29,25 @@ cfg_hyponymy_relation_datasets = {
         "path": os.path.join(DIR_TOY_DATASET, "hyponymy_triple_train.txt"),
         "header": True,
         "delimiter": "\t",
-        "columns": {"hyponym":0, "hypernym":1, "distance":2},
+        "columns": {"hyponym":1, "hypernym":0, "distance":2},
         "transform": _distance_str_to_float,
-        "description": "toy dataset (trianset). n_sample=50814, distance=[1,2,3]"
+        "description": "toy dataset (trianset). n_sample=19344, distance=[1,2,3]"
     },
     "hyponymy-triple-dev": {
         "path": os.path.join(DIR_TOY_DATASET, "hyponymy_triple_dev.txt"),
         "header": True,
         "delimiter": "\t",
-        "columns": {"hyponym":0, "hypernym":1, "distance":2},
+        "columns": {"hyponym":1, "hypernym":0, "distance":2},
         "transform": _distance_str_to_float,
-        "description": "toy dataset (development set). n_sample=6351, distance=[1,2,3]"
+        "description": "toy dataset (development set). n_sample=2418, distance=[1,2,3]"
     },
-    "hyponymy-triple-eval": {
-        "path": os.path.join(DIR_TOY_DATASET, "hyponymy_triple_eval.txt"),
+    "hyponymy-triple-test": {
+        "path": os.path.join(DIR_TOY_DATASET, "hyponymy_triple_test.txt"),
         "header": True,
         "delimiter": "\t",
-        "columns": {"hyponym":0, "hypernym":1, "distance":2, "is_hyponymy":3, "relation":4},
+        "columns": {"hyponym":1, "hypernym":0, "distance":2},
         "transform": _distance_str_to_float,
-        "description": "toy dataset (evaluation set). n_sample=, distance=[1,2,3], is_hyponymy=[True,False], relation=``"
+        "description": "toy dataset (test set). n_sample=2419, distance=[1,2,3]"
     }
 }
 
