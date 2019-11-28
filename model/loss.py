@@ -178,6 +178,8 @@ class HyponymyScoreLoss(L._Loss):
         elif distance_metric == "batchnorm-mse":
             self._func_distance = self._batchnorm_mse
             self._m = nn.BatchNorm1d(1)
+        elif distance_metric == "scaled-mae":
+            self._func_distance = self._scaled_mae
         elif distance_metric == "cosine":
             self._func_distance = self._cosine_distance
         elif distance_metric == "hinge":
@@ -202,6 +204,9 @@ class HyponymyScoreLoss(L._Loss):
 
     def _standardized_mse(self, u, v) -> torch.Tensor:
         return F.mse_loss(self._standardize(u), self._standardize(v), reduction=self.reduction)
+
+    def _scaled_mae(self, u, v) -> torch.Tensor:
+        return F.l1_loss(self._scale_dynamic(u), self._scale_dynamic(v), reduction=self.reduction)
 
     def _cosine_distance(self, u, v, dim=0, eps=1e-8) -> torch.Tensor:
         return 1.0 - F.cosine_similarity(u, v, dim, eps)
