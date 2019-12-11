@@ -22,7 +22,7 @@ def _relation_to_three_classes(sample):
     return sample
 
 
-DIR_TOY_DATASET = "/home/sakae/Windows/dataset/hypernym_detection/toy_dataset_supervised_final"
+DIR_TOY_DATASET = "/home/sakae/Windows/dataset/hypernym_detection/toy_dataset_supervised_ver2"
 
 cfg_hyponymy_relation_datasets = {
     "hyponymy-triple-train": {
