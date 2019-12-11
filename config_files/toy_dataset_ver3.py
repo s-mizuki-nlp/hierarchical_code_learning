@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
-# toy dataset ver.3 contains direct co-hyponym relation.
+# toy dataset ver.3 has direct co-hyponym relation.
 
 import os
 import numpy as np

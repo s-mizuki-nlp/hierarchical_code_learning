@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
+# toy dataset ver.2 has following changes.
+# * removed duplicated entities.
+# * oriented to more balanced hierarchical structure
+
 import os
 import numpy as np
 from dataset.transform import FieldTypeConverter
