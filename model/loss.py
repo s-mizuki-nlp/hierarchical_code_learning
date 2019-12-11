@@ -212,7 +212,7 @@ class HyponymyScoreLoss(L._Loss):
         return 1.0 - F.cosine_similarity(u, v, dim, eps)
 
     def _hinge_distance(self, y_pred, y_true) -> torch.Tensor:
-        return F.relu(y_true - y_pred)
+        return F.relu(y_pred - y_true)
 
     def _intensity_to_probability(self, t_intensity):
         # t_intensity can be either one or two dimensional tensor.
@@ -307,3 +307,11 @@ class HyponymyScoreLoss(L._Loss):
     @property
     def scale(self):
         return self._scale
+
+
+class NonHyponymyScoreLoss(HyponymyScoreLoss):
+
+    def __init__(self, scale: float = 1.0,
+                 size_average=None, reduce=None, reduction='mean') -> None:
+        super().__init__(scale=scale, normalize_hyponymy_score=False, distance_metric="hinge",
+                         size_average=size_average, reduce=reduce, reduction=reduction)
