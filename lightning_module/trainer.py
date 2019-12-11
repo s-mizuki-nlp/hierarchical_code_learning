@@ -17,7 +17,7 @@ from torch.optim import Adam
 import pytorch_lightning as pl
 
 from model.autoencoder import AutoEncoder, MaskedAutoEncoder
-from model.loss import ReconstructionLoss, HyponymyScoreLoss
+from model.loss import ReconstructionLoss, HyponymyScoreLoss, NonHyponymyScoreLoss
 
 class UnsupervisedTrainer(pl.LightningModule):
 
@@ -170,46 +170,63 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
                  loss_hyponymy: HyponymyScoreLoss,
                  use_intermediate_repr_for_hyponymy_score: bool = False,
                  loss_mutual_info: Optional[_Loss] = None,
+                 loss_non_hyponymy: Optional[NonHyponymyScoreLoss] = None,
                  dataloader_train: Optional[DataLoader] = None,
                  dataloader_val: Optional[DataLoader] = None,
                  dataloader_test: Optional[DataLoader] = None,
                  learning_rate: Optional[float] = 0.001
                  ):
 
-        super(SupervisedHypernymyRelationTrainer, self).__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate)
+        super().__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate)
 
         self._loss_hyponymy = loss_hyponymy
+        self._loss_non_hyponymy = loss_non_hyponymy
         self._use_intermediate_repr_for_hyponymy_score = use_intermediate_repr_for_hyponymy_score
 
         self._scale_loss_reconst = loss_reconst.scale
         self._scale_loss_mi = loss_mutual_info.scale if loss_mutual_info is not None else 1.
         self._scale_loss_hyponymy = loss_hyponymy.scale
+        self._scale_loss_non_hyponymy = loss_non_hyponymy.scale if loss_non_hyponymy is not None else 1.
 
     def training_step(self, data_batch, batch_nb):
 
         # forward computation
         t_x = data_batch["embedding"]
-        lst_tup_hyponymy = data_batch["hyponymy_relation"]
         t_latent_code, t_code_prob, t_x_dash = self._model.forward(t_x)
 
+        # (required) reconstruction loss
         loss_reconst = self._loss_reconst(t_x_dash, t_x)
 
+        # hyponymy relation related loss
         if self._use_intermediate_repr_for_hyponymy_score:
-            loss_hyponymy = self._loss_hyponymy(t_latent_code, lst_tup_hyponymy)
+            code_repr = t_latent_code
         else:
-            loss_hyponymy = self._loss_hyponymy(t_code_prob, lst_tup_hyponymy)
+            code_repr = t_code_prob
 
+        # (required) hyponymy score loss
+        lst_tup_hyponymy = data_batch["hyponymy_relation"]
+        loss_hyponymy = self._loss_hyponymy(code_repr, lst_tup_hyponymy)
+
+        # (optional) non-hyponymy score loss
+        if self._loss_non_hyponymy is not None:
+            lst_tup_non_hyponymy = data_batch["non_hyponymy_relation"]
+            loss_non_hyponymy = self._loss_non_hyponymy(code_repr, lst_tup_non_hyponymy)
+        else:
+            loss_non_hyponymy = torch.tensor(0.0, dtype=torch.float32)
+
+        # (optional) mutual information loss
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
         else:
             loss_mi = torch.tensor(0.0, dtype=torch.float32)
 
-        loss = loss_reconst + loss_hyponymy + loss_mi
+        loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_mi
 
         dict_losses = {
             "train_loss_reconst": loss_reconst,
             "train_loss_mutual_info": loss_mi / self._scale_loss_mi,
             "train_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
+            "train_loss_non_hyponymy": loss_non_hyponymy / self._scale_loss_non_hyponymy,
             "train_loss": loss
         }
         return {"loss":loss, "log": dict_losses}
@@ -218,27 +235,41 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
 
         # forward computation without back-propagation
         t_x = data_batch["embedding"]
-        lst_tup_hyponymy = data_batch["hyponymy_relation"]
-        t_intermediate, t_code_prob, t_x_dash = self._model._predict(t_x)
+        t_latent_code, t_code_prob, t_x_dash = self._model._predict(t_x)
 
+        # (required) reconstruction loss
         loss_reconst = self._loss_reconst(t_x_dash, t_x)
 
+        # hyponymy relation related loss
         if self._use_intermediate_repr_for_hyponymy_score:
-            loss_hyponymy = self._loss_hyponymy(t_intermediate, lst_tup_hyponymy)
+            code_repr = t_latent_code
         else:
-            loss_hyponymy = self._loss_hyponymy(t_code_prob, lst_tup_hyponymy)
+            code_repr = t_code_prob
 
+        # (required) hyponymy score loss
+        lst_tup_hyponymy = data_batch["hyponymy_relation"]
+        loss_hyponymy = self._loss_hyponymy(code_repr, lst_tup_hyponymy)
+
+        # (optional) non-hyponymy score loss
+        if self._loss_non_hyponymy is not None:
+            lst_tup_non_hyponymy = data_batch["non_hyponymy_relation"]
+            loss_non_hyponymy = self._loss_non_hyponymy(code_repr, lst_tup_non_hyponymy)
+        else:
+            loss_non_hyponymy = torch.tensor(0.0, dtype=torch.float32)
+
+        # (optional) mutual information loss
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
         else:
             loss_mi = torch.tensor(0.0, dtype=torch.float32)
 
-        loss = loss_reconst + loss_hyponymy + loss_mi
+        loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_mi
 
         metrics = {
             "val_loss_reconst": loss_reconst,
             "val_loss_mutual_info": loss_mi / self._scale_loss_mi,
             "val_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
+            "val_loss_non_hyponymy": loss_non_hyponymy / self._scale_loss_non_hyponymy,
             "val_loss": loss
         }
         metrics_repr = self._evaluate_code_stats(t_code_prob)
