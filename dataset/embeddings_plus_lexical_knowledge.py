@@ -138,16 +138,17 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
     def __init__(self, word_embeddings_dataset: AbstractWordEmbeddingsDataset, hyponymy_dataset: HyponymyDataset,
                  embedding_batch_size: int, hyponymy_batch_size: int, non_hyponymy_batch_size: Optional[int] = None,
                  non_hyponymy_relation_distance: float = -1.0,
+                 exclude_reverse_hyponymy_from_non_hyponymy_relation: bool = True,
                  verbose: bool = False, **kwargs_hyponymy_dataloader):
 
-        super(self, WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation).__init__(word_embeddings_dataset, hyponymy_dataset,
+        super().__init__(word_embeddings_dataset, hyponymy_dataset,
                  embedding_batch_size, hyponymy_batch_size, verbose, **kwargs_hyponymy_dataloader)
 
         self._non_hyponymy_batch_size = hyponymy_batch_size if non_hyponymy_batch_size is None else non_hyponymy_batch_size
         self._non_hyponymy_relation_distance = non_hyponymy_relation_distance
 
         # build the set of hyponymy relation; it will be used to sample non-hyponymy relation
-        self._build_hyponymy_relation_set(include_reverse_hyponymy_relation=False)
+        self._build_hyponymy_relation_set(include_reverse_hyponymy_relation=exclude_reverse_hyponymy_from_non_hyponymy_relation)
 
     def _build_hyponymy_relation_set(self, include_reverse_hyponymy_relation: bool):
 
