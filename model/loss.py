@@ -259,7 +259,13 @@ class HyponymyScoreLoss(L._Loss):
         return 1.0 - F.cosine_similarity(u, v, dim, eps)
 
     def _hinge_distance(self, y_pred, y_true) -> torch.Tensor:
-        return F.relu(y_pred - y_true)
+        hinge_loss = F.relu(y_pred - y_true)
+        if self.reduction == "mean":
+            return torch.mean(hinge_loss)
+        elif self.reduction == "sum":
+            return torch.sum(hinge_loss)
+        else:
+            raise NotImplementedError(f"unsupported reduction method was specified: {self.reduction}")
 
     def _intensity_to_probability(self, t_intensity):
         # t_intensity can be either one or two dimensional tensor.
