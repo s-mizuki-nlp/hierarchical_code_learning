@@ -5,14 +5,14 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
-from typing import Optional, Iterable, Tuple, Set, Type, List
+from typing import Optional, Iterable, Tuple, Set, Type, List, Dict
 import warnings
 import networkx as nx
 import random
 
 from .lexical_knowledge import HyponymyDataset
 
-class Taxonomy(object):
+class BasicTaxonomy(object):
 
     def __init__(self, hyponymy_dataset: Optional[HyponymyDataset] = None):
 
@@ -22,7 +22,7 @@ class Taxonomy(object):
             self.build_directed_acyclic_graph(iter_hyponymy_pairs)
         else:
             self._dag = None
-            self._root_nodes = None
+            self._cache_root_nodes = {}
             warnings.warn("argument `hyponymy_dataset` was not specified. you must call `build_directed_acyclic_graph()` manually.")
 
     @property
@@ -39,24 +39,30 @@ class Taxonomy(object):
         graph.add_edges_from(iter_hyponymy_pairs)
 
         self._dag = graph
-        self._root_nodes = self._find_root_nodes(graph=graph)
+        self._cache_root_nodes = {}
 
     def _find_root_nodes(self, graph) -> Set[str]:
+        hash_value = graph.__hash__()
+        if hash_value in self._cache_root_nodes:
+            return self._cache_root_nodes[hash_value]
 
-        dict_in_degrees = graph.in_degree()
-        root_nodes = set([k for k,v in dict_in_degrees.items() if v == 0])
+        root_nodes = set([k for k,v in graph.in_degree() if v == 0])
+        self._cache_root_nodes[hash_value] = root_nodes
         return root_nodes
 
     def hypernyms(self, entity):
-        return nx.ancestors(self._dag, entity)
+        return nx.ancestors(self.dag, entity)
 
     def hyponyms(self, entity):
-        return nx.descendants(self._dag, entity)
+        return nx.descendants(self.dag, entity)
 
-    def depth(self, entity, offset=1):
-        graph = self._dag
+    def depth(self, entity, offset=1, not_exists=None):
+        graph = self.dag
 
-        direct_root_nodes = nx.ancestors(graph, entity) & self._root_nodes
+        if entity not in graph:
+            return not_exists
+
+        direct_root_nodes = nx.ancestors(graph, entity) & self._find_root_nodes(graph)
         if len(direct_root_nodes) == 0:
             depth = 0
         else:
@@ -65,26 +71,29 @@ class Taxonomy(object):
 
         return depth + offset
 
-    def hyponymy_distance(self, hypernym, hyponym, dtype: Type = float):
-        graph = self._dag
+    def hyponymy_distance(self, hypernym, hyponym, dtype: Type = float, not_exists=None):
+        graph = self.dag
+        if (hypernym not in graph) or (hyponym not in graph):
+            return not_exists
+
         lowest_common_ancestor = nx.lowest_common_ancestor(graph, hypernym, hyponym)
         # 1) not connected
         if lowest_common_ancestor is None:
-            dist = - self.depth(graph, hypernym)
+            dist = - self.depth(hypernym)
         # 2) hypernym is the ancestor of the hyponym
         elif lowest_common_ancestor == hypernym:
-            dist = - nx.shortest_path_length(graph, hypernym, hyponym)
+            dist = nx.shortest_path_length(graph, hypernym, hyponym)
         # 3) these two entities are the co-hyponym
         else:
             dist = - nx.shortest_path_length(graph, lowest_common_ancestor, hypernym)
         return dtype(dist)
 
     def sample_non_hyponym(self, entity, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
-        graph = self._dag
+        graph = self.dag
         if exclude_hypernyms:
-            non_candidates = self.hyponyms(entity) | self.hypernyms(entity)
+            non_candidates = self.hyponyms(entity) | self.hypernyms(entity) | set(entity)
         else:
-            non_candidates = self.hyponyms(entity)
+            non_candidates = self.hyponyms(entity) | set(entity)
         candidates = set(graph.nodes) if candidates is None else set(candidates)
         candidates = candidates - non_candidates
 
@@ -107,7 +116,11 @@ class Taxonomy(object):
 
         return lst_ret
 
-    def is_hyponymy_relation(self, hypernym, hyponym, include_reverse_hyponymy: bool = True):
+    def is_hyponymy_relation(self, hypernym, hyponym, include_reverse_hyponymy: bool = True, not_exists = None):
+        graph = self.dag
+        if (hypernym not in graph) or (hyponym not in graph):
+            return not_exists
+
         if include_reverse_hyponymy:
             candidates = self.hyponyms(hypernym) | self.hypernyms(hypernym)
         else:
@@ -115,3 +128,54 @@ class Taxonomy(object):
         ret = hyponym in candidates
 
         return ret
+
+
+class WordNetTaxonomy(BasicTaxonomy):
+
+    def __init__(self, hyponymy_dataset: Optional[HyponymyDataset] = None):
+
+        # build taxonomy as for each part-of-speech tags as DAG
+        if hyponymy_dataset is not None:
+            set_entity_types = set((record["pos"] for record in hyponymy_dataset))
+            dict_iter_hyponymy_pairs = {}
+            for entity_type in set_entity_types:
+                generator = ((record["hypernym"], record["hyponym"]) for record in hyponymy_dataset if (record["distance"] == 1.0) and (record["pos"] == entity_type))
+                dict_iter_hyponymy_pairs[entity_type] = generator
+
+            self.build_directed_acyclic_graph(dict_iter_hyponymy_pairs)
+        else:
+            self._dag = {}
+            self._cache_root_nodes = {}
+            self._active_entity_type = None
+            warnings.warn("argument `hyponymy_dataset` was not specified. you must call `build_directed_acyclic_graph()` manually.")
+
+    def build_directed_acyclic_graph(self, dict_iter_hyponymy_pairs: Dict[str, Iterable[Tuple[str, str]]]):
+        self._dag = {}
+        for entity_type, iter_hyponymy_pairs in dict_iter_hyponymy_pairs.items():
+            graph = nx.DiGraph()
+            graph.add_edges_from(iter_hyponymy_pairs)
+            self._dag[entity_type] = graph
+
+        self._cache_root_nodes = {}
+
+    def hypernyms(self, entity, part_of_speech):
+        self.activate_entity_type(entity_type=part_of_speech)
+        return super().hypernyms(entity)
+
+    def hyponyms(self, entity, part_of_speech):
+        self.activate_entity_type(entity_type=part_of_speech)
+        return super().hyponyms(entity)
+
+    @property
+    def active_entity_type(self):
+        return self._active_entity_type
+
+    def activate_entity_type(self, entity_type):
+        self._active_entity_type = entity_type
+
+    @property
+    def dag(self):
+        if self.active_entity_type is not None:
+            return self._dag[self.active_entity_type]
+        else:
+            return self._dag
