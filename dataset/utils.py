@@ -6,6 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 from typing import Optional, Iterable, Tuple, Set, Type, List, Dict
+from collections import defaultdict
 import warnings
 import networkx as nx
 import random
@@ -139,7 +140,7 @@ class WordNetTaxonomy(BasicTaxonomy):
             set_entity_types = set((record["pos"] for record in hyponymy_dataset))
             dict_iter_hyponymy_pairs = {}
             for entity_type in set_entity_types:
-                generator = ((record["hypernym"], record["hyponym"]) for record in hyponymy_dataset if (record["distance"] == 1.0) and (record["pos"] == entity_type))
+                generator = [(record["hypernym"], record["hyponym"]) for record in hyponymy_dataset if (record["distance"] == 1.0) and (record["pos"] == entity_type)]
                 dict_iter_hyponymy_pairs[entity_type] = generator
 
             self.build_directed_acyclic_graph(dict_iter_hyponymy_pairs)
@@ -149,13 +150,30 @@ class WordNetTaxonomy(BasicTaxonomy):
             self._active_entity_type = None
             warnings.warn("argument `hyponymy_dataset` was not specified. you must call `build_directed_acyclic_graph()` manually.")
 
+    def _remove_redundant_edges(self, graph):
+
+        n_removed = 0
+        while True:
+            if nx.is_directed_acyclic_graph(graph):
+                break
+            loops = nx.find_cycle(graph)
+            graph.remove_edge(*loops[-1])
+            n_removed += 1
+
+        print(f"number of removed edges: {n_removed}")
+        return graph
+
     def build_directed_acyclic_graph(self, dict_iter_hyponymy_pairs: Dict[str, Iterable[Tuple[str, str]]]):
         self._dag = {}
         for entity_type, iter_hyponymy_pairs in dict_iter_hyponymy_pairs.items():
+            print(f"building graph. entity type: {entity_type}")
             graph = nx.DiGraph()
             graph.add_edges_from(iter_hyponymy_pairs)
+            print(f"removing redundant edges to make it acyclic graph...")
+            graph = self._remove_redundant_edges(graph)
             self._dag[entity_type] = graph
 
+        self._active_entity_type = None
         self._cache_root_nodes = {}
 
     def hypernyms(self, entity, part_of_speech):
@@ -165,6 +183,22 @@ class WordNetTaxonomy(BasicTaxonomy):
     def hyponyms(self, entity, part_of_speech):
         self.activate_entity_type(entity_type=part_of_speech)
         return super().hyponyms(entity)
+
+    def depth(self, entity, part_of_speech, offset=1, not_exists=None):
+        self.activate_entity_type(entity_type=part_of_speech)
+        return super().depth(entity, offset, not_exists)
+
+    def hyponymy_distance(self, hypernym, hyponym, part_of_speech, dtype: Type = float, not_exists=None):
+        self.activate_entity_type(entity_type=part_of_speech)
+        return super().hyponymy_distance(hypernym, hyponym, dtype, not_exists)
+
+    def sample_non_hyponym(self, entity, part_of_speech, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
+        self.activate_entity_type(entity_type=part_of_speech)
+        return super().sample_non_hyponym(entity, candidates, size, exclude_hypernyms)
+
+    def sample_non_hyponymy_relations(self, hypernym, part_of_speech, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True):
+        self.activate_entity_type(entity_type=part_of_speech)
+        return super().sample_non_hyponymy_relations(hypernym, candidates, size, exclude_hypernyms)
 
     @property
     def active_entity_type(self):
@@ -179,3 +213,7 @@ class WordNetTaxonomy(BasicTaxonomy):
             return self._dag[self.active_entity_type]
         else:
             return self._dag
+
+    @property
+    def entity_types(self):
+        return set(self._dag.keys())
