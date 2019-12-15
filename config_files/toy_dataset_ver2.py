@@ -52,6 +52,14 @@ cfg_hyponymy_relation_datasets = {
         "columns": {"hyponym":1, "hypernym":0, "distance":2},
         "transform": _distance_str_to_float,
         "description": "toy dataset (test set). n_sample=2419, distance=[1,2,3]"
+    },
+    "hyponymy-triple-all": {
+        "path": os.path.join(DIR_TOY_DATASET, "hyponymy_triple_all.txt"),
+        "header": True,
+        "delimiter": "\t",
+        "columns": {"hyponym":1, "hypernym":0, "distance":2},
+        "transform": _distance_str_to_float,
+        "description": "toy dataset (trian+dev+test). n_sample=24181, distance=[1,2,3]"
     }
 }
 
