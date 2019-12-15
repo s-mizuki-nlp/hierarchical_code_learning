@@ -90,11 +90,12 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
         batch = {
             "embedding": mat_embeddings,
             "entity": lst_tokens,
-            "hyponymy_relation": lst_hyponymy_relation
+            "hyponymy_relation": lst_hyponymy_relation,
+            "hyponymy_relation_raw": batch_hyponymy
         }
         if self._verbose:
             batch["entity_sampled"] = lst_tokens_from_embeddings
-            batch["hyponymy_relation_raw"] = batch_hyponymy
+
         return batch
 
     def __iter__(self):
