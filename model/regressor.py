@@ -9,6 +9,7 @@ from typing import List, Optional
 import torch
 from torch import nn
 from torch.nn import functional as F
+import numpy as np
 
 
 class OrdinalLogisticRegressionBasedCDFEstimator(nn.Module):
@@ -115,3 +116,51 @@ class SoftmaxBasedCDFEstimator(nn.Module):
 
         return probs
 
+
+class ScheduledSoftmaxBasedCDFEstimator(SoftmaxBasedCDFEstimator):
+
+    _EPS = 0.01
+
+    def __init__(self, n_dim_input: int, n_output: int,
+                 n_dim_hidden: Optional[int] = None, n_mlp_layer: Optional[int] = 3,
+                 assign_nonzero_value_on_most_significant_digit: bool = True,
+                 dtype=torch.float32):
+
+        super().__init__(n_dim_input, n_output, n_dim_hidden, n_mlp_layer, assign_nonzero_value_on_most_significant_digit, dtype)
+        self._gate_open_ratio = 0.0
+
+        self._offset = -0.5 if assign_nonzero_value_on_most_significant_digit else 0.5
+        self._coef_gamma = 2 * np.log((1. - self._EPS) / self._EPS)
+        self._coef_alpha = float(n_output - 1 if assign_nonzero_value_on_most_significant_digit else n_output)
+
+    @property
+    def gate_open_ratio(self) -> float:
+        return self._gate_open_ratio
+
+    @gate_open_ratio.setter
+    def gate_open_ratio(self, value):
+        self._gate_open_ratio = value
+
+    def _calc_gate_mask(self, device):
+        # gate close <=> gate_mask=1, gate open <=> gate_mask=0
+        # gate full close <=> gate_open_ratio=0, gate full open <=> gate_open_ratio=1
+        # formula: gate_mask[n] = \sigma(\gamma*(n + offset - \alpha * r)
+        # it always holds: gate_mask[n+1] > gate_mask[n]
+        # when r=0 (=full close), gate_mask[0] = \sigma(\gamma*offset) = \epsilon if msd_nonzero else 1 - \epsilon
+        # when r=1 (=full open), gate_mask[n_output-1] = \sigma(\gamma*(n_output-1 + offset - \alpha) = \epsilon
+        vec_n = torch.arange(self._n_output, dtype=self._dtype, device=device)
+        vec_intercepts = self._coef_gamma*(vec_n + self._offset - self._coef_alpha * self._gate_open_ratio)
+        gate_mask = torch.sigmoid(vec_intercepts)
+        return gate_mask
+
+    def forward(self, input_x: torch.Tensor) -> torch.Tensor:
+
+        # probs_orig = (n_batch, n_output)
+        probs_orig = super().forward(input_x)
+        # gate_mask = (1, n_output)
+        gate_mask = self._calc_gate_mask(device=input_x.device).unsqueeze(dim=0)
+
+        # apply gate mask by element-wise max
+        probs = torch.max(gate_mask, probs_orig)
+
+        return probs
