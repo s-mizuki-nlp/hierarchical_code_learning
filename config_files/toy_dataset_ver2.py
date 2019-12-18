@@ -75,7 +75,7 @@ cfg_embedding_dataset = {
 
 cfg_evaluation_datasets_classification = {
     "directionality": {
-        "path": os.path.join(DIR_TOY_DATASET, "evalset_hyponymy.txt"),
+        "path": os.path.join(DIR_TOY_DATASET, "evalset_directionality.txt"),
         "header": True,
         "delimiter": "\t",
         "columns": {"hyponym":1, "hypernym":0, "is_hyponymy":4, "relation": 2},
