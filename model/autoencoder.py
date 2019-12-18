@@ -35,6 +35,9 @@ class AutoEncoder(nn.Module):
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).type(self._dtype)
 
+    def _tensor_to_numpy(self, t_x: torch.Tensor):
+        return t_x.cpu().numpy()
+
     def _normalize(self, x: torch.Tensor, x_dash: torch.Tensor):
         """
         adjust reconstructed embeddings (`x_dash`) so that the L2 norm will be identical to the original embeddings (`x`).
@@ -79,9 +82,9 @@ class AutoEncoder(nn.Module):
     def predict(self, mat_x: np.ndarray):
 
         t_x = self._numpy_to_tensor(mat_x)
-        _, _, t_x_dash = self._predict(t_x)
+        t_latent_code, t_code_prob, t_x_dash = self._predict(t_x)
 
-        return t_x_dash.cpu().numpy()
+        return tuple(map(self._tensor_to_numpy, (t_latent_code, t_code_prob, t_x_dash)))
 
     def _encode(self, t_x: torch.Tensor):
 
@@ -96,7 +99,7 @@ class AutoEncoder(nn.Module):
             t_x = self._numpy_to_tensor(mat_x)
             t_code = self._encode(t_x)
 
-        return t_code.cpu().numpy()
+        return self._t_code.cpu().numpy()
 
     def _decode(self, t_code_prob: torch.Tensor):
 
