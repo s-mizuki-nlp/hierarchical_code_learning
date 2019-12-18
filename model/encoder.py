@@ -9,7 +9,7 @@ from typing import List, Optional
 import torch
 from torch import nn
 from torch.nn import functional as F
-from .regressor import SoftmaxBasedCDFEstimator, OrdinalLogisticRegressionBasedCDFEstimator
+from .regressor import SoftmaxBasedCDFEstimator, ScheduledSoftmaxBasedCDFEstimator
 
 
 class SimpleEncoder(nn.Module):
@@ -48,7 +48,9 @@ class CodeLengthAwareEncoder(SimpleEncoder):
 
     def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int,
                  n_dim_hidden: Optional[int] = None,
-                 dtype=torch.float32, **kwargs_for_code_length_predictor):
+                 use_scheduled_code_length_predictor: bool = False,
+                 dtype=torch.float32,
+                 **kwargs_for_code_length_predictor):
 
         super(SimpleEncoder, self).__init__()
 
@@ -57,6 +59,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         self._n_digits = n_digits
         self._n_ary = n_ary
         self._dtype = dtype
+        self._use_scheduled_code_length_predictor = use_scheduled_code_length_predictor
 
         self._build(**kwargs_for_code_length_predictor)
 
@@ -65,7 +68,11 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         self.x_to_h = nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden)
         self.lst_h_to_z_nonzero = nn.ModuleList([nn.Linear(in_features=self._n_dim_hidden, out_features=self._n_ary-1) for n in range(self._n_digits)])
 
-        self.code_length_predictor = SoftmaxBasedCDFEstimator(n_dim_input=self._n_dim_emb, n_output=self._n_digits, dtype=self._dtype,
+        if self._use_scheduled_code_length_predictor:
+            self.code_length_predictor = ScheduledSoftmaxBasedCDFEstimator(n_dim_input=self._n_dim_emb, n_output=self._n_digits, dtype=self._dtype,
+                                                              **kwargs_for_code_length_predictor)
+        else:
+            self.code_length_predictor = SoftmaxBasedCDFEstimator(n_dim_input=self._n_dim_emb, n_output=self._n_digits, dtype=self._dtype,
                                                               **kwargs_for_code_length_predictor)
 
     def forward(self, input_x: torch.Tensor):
@@ -87,3 +94,17 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         t_prob_c = torch.cat((t_prob_c_zero, (1.0-t_prob_c_zero)*t_prob_c_nonzero), dim=-1)
 
         return t_prob_c
+
+    @property
+    def gate_open_ratio(self):
+        if self._use_scheduled_code_length_predictor:
+            return self.code_length_predictor.gate_open_ratio
+        else:
+            return None
+
+    @gate_open_ratio.setter
+    def gate_open_ratio(self, value):
+        if self._use_scheduled_code_length_predictor:
+            self.code_length_predictor.gate_open_ratio = value
+        else:
+            pass
