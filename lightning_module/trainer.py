@@ -277,6 +277,16 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
 
         return {"val_loss":loss, "log":metrics}
 
+    def on_epoch_end(self):
+        if hasattr(self._model._encoder, "gate_open_ratio"):
+            current_value = self._model._encoder.gate_open_ratio
+            new_value = min(1.0, 2.0 * (self.current_epoch+1) / self.trainer.max_nb_epochs)
+            self._model._encoder.gate_open_ratio = new_value
+
+            # DEBUG
+            print(f"update gate_open_ratio: {current_value:.2} -> {new_value:.2}")
+
+
 
 class SupervisedCodeLengthTrainer(UnsupervisedTrainer):
     pass
