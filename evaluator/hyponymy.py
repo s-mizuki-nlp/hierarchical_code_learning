@@ -191,6 +191,36 @@ class SoftHyponymyPredictor(object):
         else:
             return "reverse-hyponymy"
 
+    def predict_relation_simple(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like, threshold: Optional[float] = None):
+        """
+        it predicts what relation of the (x,y) pair holds among hyponymy, reverse-hyponymy, and other relations.
+        this function is order-dependent only if (x,y) pair is either hyponymy or reverse-hyponymy relation.
+
+        :param mat_code_prob_x: code probability of the entity x
+        :param mat_code_prob_y: code probability of the other entity y
+        :param threshold: minimum value of the hyponymy score to be classified as hyponymy relation
+        :return: "hyponymy", "reverse-hyponymy", or "other"
+        """
+
+        # calculate hyponymy score for both forward and reversed direction
+        score_forward = self.calc_soft_hyponymy_score(mat_code_prob_x, mat_code_prob_y)
+        score_reversed = self.calc_soft_hyponymy_score(mat_code_prob_y, mat_code_prob_x)
+
+        # compare score with the threshold.
+        threshold = self._threshold_hyponymy_score if threshold is None else threshold
+
+        # if either one direction is true, relation must be either hyponymy or reverse hyponymy.
+        if (score_forward > threshold) or (score_reversed > threshold):
+            # re-classify whether (forward) hyponymy or reverse hyponymy.
+            direction = self.predict_directionality(mat_code_prob_x, mat_code_prob_y)
+            if direction == "x":
+                return "hyponymy"
+            else:
+                return "reverse-hyponymy"
+        # otherwise, relation must be "other".
+        else:
+            return "other"
+
     @property
     def thresholds(self):
         ret = {
