@@ -10,6 +10,7 @@ from collections import defaultdict
 import warnings
 import networkx as nx
 import random
+import progressbar
 
 from .lexical_knowledge import HyponymyDataset
 
@@ -140,7 +141,7 @@ class WordNetTaxonomy(BasicTaxonomy):
             set_entity_types = set((record["pos"] for record in hyponymy_dataset))
             dict_iter_hyponymy_pairs = {}
             for entity_type in set_entity_types:
-                generator = [(record["hypernym"], record["hyponym"]) for record in hyponymy_dataset if (record["distance"] == 1.0) and (record["pos"] == entity_type)]
+                generator = [(record["synset_hypernym"], record["synset_hyponym"]) for record in hyponymy_dataset if (record["distance"] == 1.0) and (record["pos"] == entity_type)]
                 dict_iter_hyponymy_pairs[entity_type] = generator
 
             self.build_directed_acyclic_graph(dict_iter_hyponymy_pairs)
@@ -153,12 +154,15 @@ class WordNetTaxonomy(BasicTaxonomy):
     def _remove_redundant_edges(self, graph):
 
         n_removed = 0
+        q = progressbar.ProgressBar(max_value=progressbar.UnknownLength)
         while True:
-            if nx.is_directed_acyclic_graph(graph):
+            try:
+                loops = nx.find_cycle(graph)
+                graph.remove_edge(*loops[-1])
+                n_removed += 1
+                q.update(n_removed)
+            except:
                 break
-            loops = nx.find_cycle(graph)
-            graph.remove_edge(*loops[-1])
-            n_removed += 1
 
         print(f"number of removed edges: {n_removed}")
         return graph

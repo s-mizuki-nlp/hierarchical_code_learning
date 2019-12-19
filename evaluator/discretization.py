@@ -6,9 +6,11 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import torch
 from torch.utils.data import DataLoader
 from model.autoencoder import AutoEncoder
 from .utils import total_variation_distance
+
 
 class TotalVariationDistanceEvaluator(object):
 
@@ -40,3 +42,19 @@ class TotalVariationDistanceEvaluator(object):
             return tvd_sum / n_eval
         else:
             return tvd_sum
+
+
+
+class CodeCountEvaluator(object):
+
+    def __init__(self, model: AutoEncoder, embeddings_dataset: ):
+        pass
+
+
+    def count_code_occurence(self):
+
+        t_code = torch.tensor([])
+        mat_code = t_code.numpy()
+        mat_code_count = np.zeros((n_digits, n_ary), dtype=np.int)
+        for digit, (vec_value, vec_count) in enumerate(map(lambda v: np.unique(v, return_counts=True), mat_code.T)):
+            mat_code_count[digit, vec_value] += vec_count
