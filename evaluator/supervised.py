@@ -9,7 +9,8 @@ import os, sys, io
 import argparse
 
 from abc import ABCMeta, abstractmethod
-from typing import Optional, Dict, Callable, Iterable, Any, List
+from typing import Optional, Dict, Callable, Iterable, Any, List, Union
+from collections import defaultdict
 import pydash
 import numpy as np
 import torch
@@ -42,6 +43,12 @@ class BaseEvaluator(object, metaclass=ABCMeta):
         }
 
         self._update_task_specific_evaluator()
+
+    def _tensor_to_list(self, tensor_or_list: Union[torch.Tensor, List]):
+        if isinstance(tensor_or_list, torch.Tensor):
+            return tensor_or_list.tolist()
+        else:
+            return tensor_or_list
 
     @abstractmethod
     def _update_task_specific_evaluator(self):
@@ -136,11 +143,8 @@ class HyponymyDirectionalityEvaluator(BaseEvaluator):
                 lst_pred_b.append(pred)
 
             # store the ground-truth and prediction
-            lst_gt_b = batch[class_label_field_name]
-            if isinstance(lst_gt_b, torch.Tensor):
-                lst_gt_b = lst_gt_b.tolist()
+            lst_gt_b = self._tensor_to_list(batch[class_label_field_name])
             lst_gt.extend(lst_gt_b)
-
             lst_pred.extend(lst_pred_b)
 
         # calculate metrics
@@ -158,12 +162,26 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
     """
 
     def _update_task_specific_evaluator(self):
-        pass
+        self._default_evaluator["accuracy_by_category"] = self._accuracy_by_category
+
+    def _accuracy_by_category(self, lst_gt, lst_pred, lst_category, **kwargs):
+        dict_denom = defaultdict(int)
+        dict_num = defaultdict(int)
+        for gt, pred, category in zip(lst_gt, lst_pred, lst_category):
+            dict_denom[category] += 1
+            if gt == pred:
+                dict_num[category] += 1
+        dict_acc = {}
+        for category in dict_denom.keys():
+            dict_acc[category] = dict_num[category] / dict_denom[category]
+
+        return dict_acc
 
     def evaluate(self, hyponym_field_name: str = "hyponym",
                 hypernym_field_name: str = "hypernym",
                 class_label_field_name: str = "class",
                 embedding_field_name: str = "embedding",
+                category_field_name: str = "relation",
                 threshold_soft_hyponymy_score: float = 0.0,
                 evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
                 **kwargs_for_metric_function):
@@ -173,6 +191,7 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
 
         lst_gt = []
         lst_pred = []
+        lst_category = []
         for batch in self._evaluation_data_loader:
             # take hyponyms, hypernyms
             lst_hyponyms = batch[hyponym_field_name]
@@ -192,15 +211,101 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
                 lst_pred_b.append(pred)
 
             # store the ground-truth and prediction
-            lst_gt_b = batch[class_label_field_name]
-            if isinstance(lst_gt_b, torch.Tensor):
-                lst_gt_b = lst_gt_b.tolist()
+            lst_gt_b = self._tensor_to_list(batch[class_label_field_name])
             lst_gt.extend(lst_gt_b)
             lst_pred.extend(lst_pred_b)
+            lst_category.extend(self._tensor_to_list(batch[category_field_name]))
 
         # calculate metrics
         dict_ret = {}
         for metric_name, f_metric in evaluator.items():
-            dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
+            if metric_name == "accuracy_by_category":
+                dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
+            else:
+                dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
 
         return lst_gt, lst_pred, dict_ret
+
+
+class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
+
+    """
+    evaluator for multi-class hyponymy relation classification task
+    classes are: hyponymy, reverse-hyponymy, and other
+    """
+
+    def _update_task_specific_evaluator(self):
+        self._default_evaluator["accuracy_by_category"] = self._accuracy_by_category
+
+    def _accuracy_by_category(self, lst_gt, lst_pred, lst_category, **kwargs):
+        dict_denom = defaultdict(int)
+        dict_num = defaultdict(int)
+        for gt, pred, category in zip(lst_gt, lst_pred, lst_category):
+            dict_denom[category] += 1
+            if gt == pred:
+                dict_num[category] += 1
+        dict_acc = {}
+        for category in dict_denom.keys():
+            dict_acc[category] = dict_num[category] / dict_denom[category]
+
+        return dict_acc
+
+    def evaluate(self, hyponym_field_name: str = "hyponym",
+                 hypernym_field_name: str = "hypernym",
+                 class_label_field_name: str = "class",
+                 embedding_field_name: str = "embedding",
+                 category_field_name: str = "relation",
+                 prediction_method: str = "simple",
+                 threshold_soft_hyponymy_score: float = 0.0,
+                 threshold_hyponymy_propensity_score: float = 0.0,
+                 evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
+                 **kwargs_for_metric_function):
+
+        evaluator = self._default_evaluator if evaluator is None else evaluator
+
+        predictor = SoftHyponymyPredictor(threshold_soft_hyponymy_score=threshold_soft_hyponymy_score,
+                                          threshold_hyponymy_propensity_score=threshold_hyponymy_propensity_score)
+        if prediction_method == "simple":
+            predictor_function = predictor.predict_relation_simple
+        elif prediction_method == "default":
+            predictor_function = predictor.predict_relation
+        else:
+            raise NotImplementedError("`prediction_method` must be one of these: `simple,default`")
+
+        lst_gt = []
+        lst_pred = []
+        lst_category = []
+        for batch in self._evaluation_data_loader:
+            # take hyponyms, hypernyms
+            lst_hyponyms = batch[hyponym_field_name]
+            lst_hypernyms = batch[hypernym_field_name]
+            # take embeddings
+            mat_emb_hyponyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hyponyms])
+            mat_emb_hypernyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hypernyms])
+            # encode embeddings into the code probabilities
+            _, t_mat_code_prob_hyponyms, _ = self._model.predict(mat_emb_hyponyms)
+            _, t_mat_code_prob_hypernyms, _ = self._model.predict(mat_emb_hypernyms)
+
+            # predict directionality using code probabilities
+            # suppose x is hypernym and y is hyponym
+            lst_pred_b = []
+            for mat_x, mat_y in zip(t_mat_code_prob_hypernyms, t_mat_code_prob_hyponyms):
+                pred = predictor_function(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
+                lst_pred_b.append(pred)
+
+            # store the ground-truth and prediction
+            lst_gt_b = self._tensor_to_list(batch[class_label_field_name])
+            lst_gt.extend(lst_gt_b)
+            lst_pred.extend(lst_pred_b)
+            lst_category.extend(self._tensor_to_list(batch[category_field_name]))
+
+        # calculate metrics
+        dict_ret = {}
+        for metric_name, f_metric in evaluator.items():
+            if metric_name == "accuracy_by_category":
+                dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
+            else:
+                dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
+
+        return lst_gt, lst_pred, dict_ret
+
