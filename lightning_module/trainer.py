@@ -279,8 +279,9 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
 
     def on_epoch_end(self):
         if hasattr(self._model._encoder, "gate_open_ratio"):
+            coef_accelerator = 1.2
             current_value = self._model._encoder.gate_open_ratio
-            new_value = min(1.0, 2.0 * (self.current_epoch+1) / self.trainer.max_nb_epochs)
+            new_value = min(1.0, coef_accelerator * (self.current_epoch+1) / self.trainer.max_nb_epochs)
             self._model._encoder.gate_open_ratio = new_value
 
             # DEBUG
