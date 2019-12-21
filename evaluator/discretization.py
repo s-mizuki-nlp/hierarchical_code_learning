@@ -5,9 +5,12 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
+from typing import Optional
 import numpy as np
+import pydash
 import torch
 from torch.utils.data import DataLoader
+from dataset.word_embeddings import AbstractWordEmbeddingsDataset
 from model.autoencoder import AutoEncoder
 from .utils import total_variation_distance
 
@@ -47,14 +50,47 @@ class TotalVariationDistanceEvaluator(object):
 
 class CodeCountEvaluator(object):
 
-    def __init__(self, model: AutoEncoder, embeddings_dataset: ):
-        pass
+    def __init__(self, model: AutoEncoder, embeddings_dataset: AbstractWordEmbeddingsDataset,
+                 **kwargs_dataloader):
+        self._n_digits, self._n_ary = model.n_digits, model.n_ary
+        self._model = model
+        self._embeddings_dataset = embeddings_dataset
+        self._embeddings_data_loader = DataLoader(embeddings_dataset, **kwargs_dataloader)
 
+    def evaluate(self,
+                 embedding_key_name: str = "embedding",
+                 ground_truth_key_path: Optional[str] = "entity_info.code_representation",
+                 normalize: bool = True):
 
-    def count_code_occurence(self):
+        if ground_truth_key_path is not None:
+            use_ground_truth = True
 
-        t_code = torch.tensor([])
-        mat_code = t_code.numpy()
-        mat_code_count = np.zeros((n_digits, n_ary), dtype=np.int)
-        for digit, (vec_value, vec_count) in enumerate(map(lambda v: np.unique(v, return_counts=True), mat_code.T)):
-            mat_code_count[digit, vec_value] += vec_count
+        else:
+            use_ground_truth = True
+
+        mat_code_count_pred = np.zeros((self._n_digits, self._n_ary), dtype=np.int)
+        mat_code_count_gt = mat_code_count_pred.copy() if use_ground_truth else None
+
+        for batch in self._embeddings_data_loader:
+            t_x = pydash.objects.get(batch, embedding_key_name)
+            # mat_code: (n_batch, n_digits)
+            mat_code = self._model._encode(t_x).numpy()
+
+            # count value occurence at each digit of the code.
+            for digit, (vec_value, vec_count) in enumerate(map(lambda v: np.unique(v, return_counts=True), mat_code.T)):
+                mat_code_count_pred[digit, vec_value] += vec_count
+
+            # similarly, count value occurence of the ground-truth code if specified
+            if use_ground_truth:
+                # mat_code_gt: (n_batch, n_digits)
+                mat_code_gt = np.stack(pydash.objects.get(batch, ground_truth_key_path)).T
+                for digit, (vec_value, vec_count) in enumerate(map(lambda v: np.unique(v, return_counts=True), mat_code_gt.T)):
+                    mat_code_count_gt[digit, vec_value] += vec_count
+
+        if normalize:
+            n_sample = len(self._embeddings_dataset)
+            mat_code_count_pred = mat_code_count_pred / n_sample
+            if use_ground_truth:
+                mat_code_count_gt = mat_code_count_gt / n_sample
+
+        return mat_code_count_pred, mat_code_count_gt
