@@ -6,7 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 import warnings
-warnings.simplefilter("always")
+warnings.simplefilter("ignore", category=ImportWarning)
 
 import numpy as np
 from torch.utils.data import DataLoader
@@ -19,7 +19,7 @@ from dataset.embeddings_plus_lexical_knowledge import WordEmbeddingsAndHyponymyD
 
 from config_files.word_embeddings import DIR_WORD_EMBEDDINGS
 from config_files.lexical_knowledge_datasets import DIR_LEXICAL_KNOWLEDGE
-from config_files.toy_dataset_ver3 import DIR_TOY_DATASET
+from config_files.toy_dataset_ver2 import DIR_TOY_DATASET
 
 _distance_str_to_float = FieldTypeConverter(dict_field_type_converter={"distance":np.float32})
 
@@ -132,10 +132,12 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelationTestCases(unittest.
         cls._word_embeddings = GeneralPurposeEmbeddingsDataset(**cls._cfg_embeddings)
         cls._lexical_knowledge = HyponymyDataset(**cls._cfg_lexical_knowledge)
         cls._dataset = WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(cls._word_embeddings, cls._lexical_knowledge,
-                                                        embedding_batch_size=10, hyponymy_batch_size=2,
-                                                        non_hyponymy_batch_size=5,
-                                                        non_hyponymy_relation_distance=-0.5,
+                                                        embedding_batch_size=40, hyponymy_batch_size=4,
+                                                        non_hyponymy_batch_size=24,
+                                                        non_hyponymy_relation_distance=None,
                                                         exclude_reverse_hyponymy_from_non_hyponymy_relation=True,
+                                                        limit_hyponym_candidates_within_minibatch=False,
+                                                        split_hyponymy_and_non_hyponymy=True,
                                                         verbose=True, shuffle=True)
         cls._dataloader = DataLoader(cls._dataset, batch_size=None, collate_fn=lambda v: v)
 
@@ -143,10 +145,9 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelationTestCases(unittest.
         cls._batch = cls._dataset[idx_max // 2]
 
     def test_batch_fields(self):
-
         batch = self._batch
         # batch = next(iter(self._dataloader))
-        required_fieid_names = "embedding,entity,hyponymy_relation,non_hyponymy_relation".split(",")
+        required_fieid_names = "embedding,entity,hyponymy_relation,non_hyponymy_relation,hyponymy_relation_raw,non_hyponymy_relation_raw".split(",")
         for field_name in required_fieid_names:
             with self.subTest(field_name=field_name):
                 self.assertTrue(field_name in batch)
@@ -154,7 +155,6 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelationTestCases(unittest.
     def test_batch_field_size(self):
 
         batch = self._batch
-        # batch = next(iter(self._dataloader))
         embedding = batch["embedding"]
         entity = batch["entity"]
         hyponymy_relation = batch["hyponymy_relation"]
@@ -165,9 +165,9 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelationTestCases(unittest.
         n_non_hyponymy_relation = len(non_hyponymy_relation)
         n_dim = self._word_embeddings.n_dim
         self.assertEqual(embedding.shape, (n_entity, n_dim))
-        self.assertGreaterEqual(10, n_entity)
-        self.assertGreaterEqual(2, n_hyponymy_relation)
-        self.assertGreaterEqual(5, n_non_hyponymy_relation)
+        self.assertGreaterEqual(self._dataset._embedding_batch_size, n_entity)
+        self.assertGreaterEqual(self._dataset._hyponymy_batch_size, n_hyponymy_relation)
+        self.assertGreaterEqual(self._dataset._non_hyponymy_batch_size, n_non_hyponymy_relation)
 
     def test_batch_entity_consistency(self):
 
@@ -205,6 +205,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelationTestCases(unittest.
         embedding = batch["embedding"]
         entity = batch["entity"]
         non_hyponymy_relation = batch["non_hyponymy_relation"] # list of (idx_hyper, idx_hypo, distance)
+        taxonomy = self._dataset._taxonomy
 
         # hyponymy and reverse-hyponymy relation within the lexical knowledge dataset
         set_hyponymy_relation = set()
@@ -231,7 +232,15 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelationTestCases(unittest.
                 vec_e_gt = self._word_embeddings[hypernym]["embedding"]
                 self.assertTrue(np.array_equal(vec_e, vec_e_gt))
 
+            # assert non-hyponymy relation never appear in the trainset
             with self.subTest(hyponym=hyponym, hypernym=hypernym):
                 self.assertTrue(tup_non_hyponymy not in set_hyponymy_relation)
                 self.assertTrue(tup_rev_non_hyponymy not in set_hyponymy_relation)
 
+            # assert distance of the non-hyponymy relation
+            with self.subTest(hyponym=hyponym, hypernym=hypernym):
+                if self._dataset._non_hyponymy_relation_distance is None:
+                    distance_gt = taxonomy.hyponymy_distance(hypernym=hypernym, hyponym=hyponym)
+                else:
+                    distance_gt = self._dataset._non_hyponymy_relation_distance
+                self.assertEqual(distance, distance_gt)
