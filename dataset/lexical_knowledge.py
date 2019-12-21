@@ -18,7 +18,7 @@ class HyponymyDataset(Dataset):
                  replace_whitespace_with_underscore: bool = False,
                  description: str = "", transform=None):
 
-        super(HyponymyDataset).__init__()
+        super().__init__()
         self.path = path
         assert os.path.exists(path), f"invalid path specified: {path}"
 
@@ -162,3 +162,7 @@ class HyponymyDataset(Dataset):
             "transform": self.transform
         }
         return ret
+
+
+class WordNetHyponymyDataset(HyponymyDataset):
+    pass
