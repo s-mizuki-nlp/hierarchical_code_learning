@@ -7,6 +7,7 @@ from __future__ import print_function
 
 from typing import Optional, Iterable, Tuple, Set, Type, List, Dict
 from collections import defaultdict
+from functools import lru_cache
 import warnings
 import networkx as nx
 import random
@@ -16,20 +17,21 @@ from .lexical_knowledge import HyponymyDataset
 
 class BasicTaxonomy(object):
 
-    def __init__(self, hyponymy_dataset: Optional[HyponymyDataset] = None):
+    def __init__(self, hyponymy_dataset: HyponymyDataset):
 
         # build taxonomy as a DAG
-        if hyponymy_dataset is not None:
-            iter_hyponymy_pairs = ((record["hypernym"], record["hyponym"]) for record in hyponymy_dataset if record["distance"] == 1.0)
-            self.build_directed_acyclic_graph(iter_hyponymy_pairs)
-        else:
-            self._dag = None
-            self._cache_root_nodes = {}
-            warnings.warn("argument `hyponymy_dataset` was not specified. you must call `build_directed_acyclic_graph()` manually.")
+        iter_hyponymy_pairs = ((record["hypernym"], record["hyponym"]) for record in hyponymy_dataset if record["distance"] == 1.0)
+        self.build_directed_acyclic_graph(iter_hyponymy_pairs)
+        iter_hyponymy_pairs = ((record["hypernym"], record["hyponym"]) for record in hyponymy_dataset)
+        self.record_ancestors_and_descendeants(iter_hyponymy_pairs)
 
     @property
     def dag(self):
         return self._dag
+
+    @property
+    def nodes(self):
+        return self._nodes
 
     def build_directed_acyclic_graph(self, iter_hyponymy_pairs: Iterable[Tuple[str, str]]):
         """
@@ -42,6 +44,14 @@ class BasicTaxonomy(object):
 
         self._dag = graph
         self._cache_root_nodes = {}
+        self._nodes = set(graph.nodes)
+
+    def record_ancestors_and_descendeants(self, iter_hyponymy_pairs):
+        self._ancestors = defaultdict(set)
+        self._descendants = defaultdict(set)
+        for hypernym, hyponym in iter_hyponymy_pairs:
+            self._ancestors[hyponym].add(hypernym)
+            self._descendants[hypernym].add(hyponym)
 
     def _find_root_nodes(self, graph) -> Set[str]:
         hash_value = graph.__hash__()
@@ -53,10 +63,18 @@ class BasicTaxonomy(object):
         return root_nodes
 
     def hypernyms(self, entity):
-        return nx.ancestors(self.dag, entity)
+        return nx.ancestors(self.dag, entity).union(self._ancestors.get(entity, set()))
 
     def hyponyms(self, entity):
-        return nx.descendants(self.dag, entity)
+        return nx.descendants(self.dag, entity).union(self._descendants.get(entity, set()))
+
+    @lru_cache(maxsize=1000)
+    def ancestors_and_descendents(self, entity):
+        return self.hyponyms(entity) | self.hypernyms(entity) | {entity}
+
+    @lru_cache(maxsize=1000)
+    def descendents(self, entity):
+        return self.hyponyms(entity) | {entity}
 
     def depth(self, entity, offset=1, not_exists=None):
         graph = self.dag
@@ -73,10 +91,12 @@ class BasicTaxonomy(object):
 
         return depth + offset
 
-    def hyponymy_distance(self, hypernym, hyponym, dtype: Type = float, not_exists=None):
+    def hyponymy_distance(self, hypernym, hyponym, dtype: Type = float):
         graph = self.dag
-        if (hypernym not in graph) or (hyponym not in graph):
-            return not_exists
+        if hypernym not in graph:
+            raise ValueError(f"invalid node is specified: {hypernym}")
+        if hyponym not in graph:
+            raise ValueError(f"invalid node is specified: {hyponym}")
 
         lowest_common_ancestor = nx.lowest_common_ancestor(graph, hypernym, hyponym)
         # 1) not connected
@@ -92,22 +112,22 @@ class BasicTaxonomy(object):
 
     def sample_non_hyponym(self, entity, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
         graph = self.dag
+        if entity not in graph:
+            return []
+
         if exclude_hypernyms:
-            non_candidates = self.hyponyms(entity) | self.hypernyms(entity) | set(entity)
+            non_candidates = self.ancestors_and_descendents(entity)
         else:
-            non_candidates = self.hyponyms(entity) | set(entity)
-        candidates = set(graph.nodes) if candidates is None else set(candidates)
+            non_candidates = self.descendents(entity)
+        candidates = self._nodes if candidates is None else set(candidates).intersection(self._nodes)
         candidates = candidates - non_candidates
 
         if len(candidates) == 0:
             return []
 
-        if len(candidates) < size:
-            # sample with replacement
-            sampled = random.choices(list(candidates), k=size)
-        else:
-            # sample without replacement
-            sampled = random.sample(list(candidates), k=size)
+        size = min(size, len(candidates))
+        # sample without replacement
+        sampled = random.sample(candidates, k=size)
 
         return sampled
 
