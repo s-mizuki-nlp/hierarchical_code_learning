@@ -110,6 +110,32 @@ class BasicTaxonomy(object):
             dist = - nx.shortest_path_length(graph, lowest_common_ancestor, hypernym)
         return dtype(dist)
 
+    def hyponymy_distance_fast(self, hypernym, hyponym, dtype: Type = float):
+        graph = self.dag
+        if hypernym not in graph:
+            raise ValueError(f"invalid node is specified: {hypernym}")
+        if hyponym not in graph:
+            raise ValueError(f"invalid node is specified: {hyponym}")
+
+        ancestors_hypernym = nx.ancestors(self.dag, hypernym)
+        ancestors_hyponym = nx.ancestors(self.dag, hyponym)
+        ancestors_common = ancestors_hypernym.intersection(ancestors_hyponym)
+
+        # 1) hypernym is the ancestor of the hyponym
+        if hypernym in ancestors_hyponym:
+            dist = nx.shortest_path_length(graph, hypernym, hyponym)
+        # 2) hyponym is the ancestor of the hypernym (=reverse hyponymy)
+        elif hyponym in ancestors_hypernym:
+            dist = - nx.shortest_path_length(graph, hyponym, hypernym)
+        # 3) not connected
+        elif len(ancestors_common) == 0:
+            dist = - self.depth(hypernym)
+        # 4) these two entities are the co-hyponym
+        elif len(ancestors_common) > 0:
+            lst_path_length = (nx.shortest_path_length(graph, common, hypernym) for common in ancestors_common)
+            dist = - min(lst_path_length)
+        return dtype(dist)
+
     def sample_non_hyponym(self, entity, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
         graph = self.dag
         if entity not in graph:
@@ -134,7 +160,7 @@ class BasicTaxonomy(object):
     def sample_non_hyponymy_relations(self, hypernym, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True):
 
         lst_non_hyponyms = self.sample_non_hyponym(hypernym, candidates, size, exclude_hypernyms)
-        lst_ret = [(hypernym, hyponym, self.hyponymy_distance(hypernym, hyponym)) for hyponym in lst_non_hyponyms]
+        lst_ret = [(hypernym, hyponym, self.hyponymy_distance_fast(hypernym, hyponym)) for hyponym in lst_non_hyponyms]
 
         return lst_ret
 
@@ -214,7 +240,11 @@ class WordNetTaxonomy(BasicTaxonomy):
 
     def hyponymy_distance(self, hypernym, hyponym, part_of_speech, dtype: Type = float, not_exists=None):
         self.activate_entity_type(entity_type=part_of_speech)
-        return super().hyponymy_distance(hypernym, hyponym, dtype, not_exists)
+        return super().hyponymy_distance(hypernym, hyponym, dtype)
+
+    def hyponymy_distance_fast(self, hypernym, hyponym, part_of_speech, dtype: Type = float, not_exists=None):
+        self.activate_entity_type(entity_type=part_of_speech)
+        return super().hyponymy_distance_fast(hypernym, hyponym, dtype)
 
     def sample_non_hyponym(self, entity, part_of_speech, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
         self.activate_entity_type(entity_type=part_of_speech)
