@@ -31,6 +31,14 @@ class StraightThroughEstimator(nn.Module):
 
         return output
 
+    @property
+    def temperature(self):
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, value):
+        self._temperature = value
+
 
 class GumbelSoftmax(nn.Module):
 
@@ -50,6 +58,14 @@ class GumbelSoftmax(nn.Module):
             return F.gumbel_softmax(logits=logits, tau=self._temperature, hard=False, dim=dim)
         else:
             return F.softmax(input=logits / self._temperature, dim=dim)
+
+    @property
+    def temperature(self):
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, value):
+        self._temperature = value
 
 
 class Entmax15Estimator(nn.Module):
@@ -72,6 +88,15 @@ class Entmax15Estimator(nn.Module):
 
         return entmax15(logits, dim=dim)
 
+    @property
+    def temperature(self):
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, value):
+        self._temperature = value
+
+
 class SparsemaxEstimator(nn.Module):
 
     def __init__(self, add_gumbel_noise: bool = False, temperature: float = 1.0):
@@ -91,3 +116,11 @@ class SparsemaxEstimator(nn.Module):
             logits = self._gumbel_noise(logits=logits)
 
         return sparsemax(logits, dim=dim)
+
+    @property
+    def temperature(self):
+        return self._temperature
+
+    @temperature.setter
+    def temperature(self, value):
+        self._temperature = value

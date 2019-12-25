@@ -5,7 +5,7 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
-from typing import Optional, Dict, Tuple, Union
+from typing import Optional, Dict, Tuple, Union, Callable
 from collections import defaultdict
 import pickle
 import numpy as np
@@ -169,6 +169,7 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
                  loss_reconst: ReconstructionLoss,
                  loss_hyponymy: HyponymyScoreLoss,
                  use_intermediate_repr_for_hyponymy_score: bool = False,
+                 scheduler_of_discretizer_temperature: Optional[Callable[[float], float]] = None,
                  loss_mutual_info: Optional[_Loss] = None,
                  loss_non_hyponymy: Optional[Union[NonHyponymyScoreLoss, HyponymyScoreLoss]] = None,
                  dataloader_train: Optional[DataLoader] = None,
@@ -182,6 +183,8 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         self._loss_hyponymy = loss_hyponymy
         self._loss_non_hyponymy = loss_non_hyponymy
         self._use_intermediate_repr_for_hyponymy_score = use_intermediate_repr_for_hyponymy_score
+
+        self._scheduler_of_discretizer_temperature = scheduler_of_discretizer_temperature
 
         self._scale_loss_reconst = loss_reconst.scale
         self._scale_loss_mi = loss_mutual_info.scale if loss_mutual_info is not None else 1.
@@ -298,6 +301,11 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
                 # DEBUG
                 print(f"update gate_open_ratio: {current_value:.2} -> {new_value:.2}")
 
+        if self._scheduler_of_discretizer_temperature is not None:
+            current_value = self._model.temperature
+            if current_value is not None:
+                new_value = self._scheduler_of_discretizer_temperature(self.current_epoch+1 / self.trainer.max_nb_epochs)
+                self._model.temperature = new_value
 
 
 class SupervisedCodeLengthTrainer(UnsupervisedTrainer):

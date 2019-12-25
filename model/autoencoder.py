@@ -32,6 +32,15 @@ class AutoEncoder(nn.Module):
     def n_digits(self):
         return self._encoder._n_digits
 
+    @property
+    def temperature(self):
+        return getattr(self._discretizer, "temperature", None)
+
+    @temperature.setter
+    def temperature(self, value):
+        if self.temperature is not None:
+            setattr(self._discretizer, "temperature", value)
+
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).type(self._dtype)
 
