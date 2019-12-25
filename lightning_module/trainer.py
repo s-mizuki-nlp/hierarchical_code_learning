@@ -281,11 +281,12 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         if hasattr(self._model._encoder, "gate_open_ratio"):
             coef_accelerator = 1.2
             current_value = self._model._encoder.gate_open_ratio
-            new_value = min(1.0, coef_accelerator * (self.current_epoch+1) / self.trainer.max_nb_epochs)
-            self._model._encoder.gate_open_ratio = new_value
+            if current_value is not None:
+                new_value = min(1.0, coef_accelerator * (self.current_epoch+1) / self.trainer.max_nb_epochs)
+                self._model._encoder.gate_open_ratio = new_value
 
-            # DEBUG
-            print(f"update gate_open_ratio: {current_value:.2} -> {new_value:.2}")
+                # DEBUG
+                print(f"update gate_open_ratio: {current_value:.2} -> {new_value:.2}")
 
 
 
