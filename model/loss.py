@@ -135,7 +135,6 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
 
 
 ### supervised loss classes ###
-
 class CodeLengthPredictionLoss(L._Loss):
 
     def __init__(self, scale: float = 1.0, normalize_code_length: bool = True, normalize_coefficient_for_ground_truth: float = 1.0,
@@ -217,7 +216,7 @@ class HyponymyScoreLoss(L._Loss):
         self._normalize_coef_for_gt = normalize_coefficient_for_ground_truth
         self._distance_metric = distance_metric
         if distance_metric == "mse":
-            self._func_distance = L.MSELoss(reduction=reduction)
+            self._func_distance = self._mse
         elif distance_metric == "scaled-mse":
             self._func_distance = self._scaled_mse
         elif distance_metric == "standardized-mse":
@@ -246,6 +245,9 @@ class HyponymyScoreLoss(L._Loss):
         stds = vec.std(dim=dim, keepdim=True)
         return vec / (stds + 1E-6)
 
+    def _mse(self, u, v) -> torch.Tensor:
+        return F.mse_loss(u, v, reduction=self.reduction)
+
     def _scaled_mse(self, u, v) -> torch.Tensor:
         return F.mse_loss(self._scale_dynamic(u), self._scale_dynamic(v), reduction=self.reduction)
 
@@ -264,6 +266,8 @@ class HyponymyScoreLoss(L._Loss):
             return torch.mean(hinge_loss)
         elif self.reduction == "sum":
             return torch.sum(hinge_loss)
+        elif self.reduction == "none":
+            return hinge_loss
         else:
             raise NotImplementedError(f"unsupported reduction method was specified: {self.reduction}")
 
