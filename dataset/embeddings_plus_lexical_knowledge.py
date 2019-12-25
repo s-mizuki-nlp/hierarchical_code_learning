@@ -49,7 +49,7 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
         balanced_embedding_batch_size = np.ceil((n_embeddings/(coef_effective_samples*n_iteration)) + 2*self._hyponymy_batch_size)
         balanced_hyponymy_batch_size = np.ceil(n_hyponymy*self._embedding_batch_size*coef_effective_samples/(n_embeddings+2*coef_effective_samples*n_hyponymy))
 
-        print(f"hyponymy relatios: {n_hyponymy}")
+        print(f"hyponymy relations: {n_hyponymy}")
         print(f"embeddings: {n_embeddings}")
         print(f"embeddings referenced in epoch: {n_embeddings_used_in_epoch:.0f}")
         print(f"consumption ratio: {ratio:2.3f}")
@@ -205,7 +205,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         balanced_embedding_batch_size = np.ceil(self._embedding_batch_size - (n_embeddings_sample_in_batch - balanced_embeddings_sample_in_batch))
         balanced_hyponymy_batch_size = np.floor(n_hyponymy*self._embedding_batch_size*coef_effective_samples/(n_embeddings+multiplier*coef_effective_samples*n_hyponymy))
 
-        print(f"hyponymy relatios: {n_hyponymy}")
+        print(f"hyponymy relations: {n_hyponymy}")
         print(f"non-hyponymy relations: {n_hyponymy*self._non_hyponymy_multiple}")
         print(f"embeddings: {n_embeddings}")
         print(f"embeddings referenced in epoch: {n_embeddings_used_in_epoch:.0f}")
