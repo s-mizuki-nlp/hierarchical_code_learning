@@ -136,7 +136,7 @@ class BasicTaxonomy(object):
             dist = - min(lst_path_length)
         return dtype(dist)
 
-    def sample_non_hyponym(self, entity, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
+    def sample_non_hyponymy(self, entity, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
         graph = self.dag
         if entity not in graph:
             return []
@@ -157,10 +157,21 @@ class BasicTaxonomy(object):
 
         return sampled
 
-    def sample_non_hyponymy_relations(self, hypernym, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True):
+    def sample_random_hyponyms(self, entity: str,
+                               candidates: Optional[Iterable[str]] = None,
+                               size: int = 1, exclude_hypernyms: bool = True):
 
-        lst_non_hyponyms = self.sample_non_hyponym(hypernym, candidates, size, exclude_hypernyms)
-        lst_ret = [(hypernym, hyponym, self.hyponymy_distance_fast(hypernym, hyponym)) for hyponym in lst_non_hyponyms]
+        lst_non_hyponymy_entities = self.sample_non_hyponymy(entity, candidates, size, exclude_hypernyms)
+        lst_ret = [(entity, hyponym, self.hyponymy_distance_fast(entity, hyponym)) for hyponym in lst_non_hyponymy_entities]
+
+        return lst_ret
+
+    def sample_random_hypernyms(self, entity: str,
+                               candidates: Optional[Iterable[str]] = None,
+                               size: int = 1, exclude_hypernyms: bool = True):
+
+        lst_non_hyponymy_entities = self.sample_non_hyponymy(entity, candidates, size, exclude_hypernyms)
+        lst_ret = [(hypernym, entity, self.hyponymy_distance_fast(hypernym, entity)) for hypernym in lst_non_hyponymy_entities]
 
         return lst_ret
 
@@ -246,13 +257,13 @@ class WordNetTaxonomy(BasicTaxonomy):
         self.activate_entity_type(entity_type=part_of_speech)
         return super().hyponymy_distance_fast(hypernym, hyponym, dtype)
 
-    def sample_non_hyponym(self, entity, part_of_speech, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
+    def sample_non_hyponymy(self, entity, part_of_speech, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
         self.activate_entity_type(entity_type=part_of_speech)
-        return super().sample_non_hyponym(entity, candidates, size, exclude_hypernyms)
+        return super().sample_non_hyponymy(entity, candidates, size, exclude_hypernyms)
 
-    def sample_non_hyponymy_relations(self, hypernym, part_of_speech, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True):
+    def sample_random_hyponyms(self, hypernym, part_of_speech, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True):
         self.activate_entity_type(entity_type=part_of_speech)
-        return super().sample_non_hyponymy_relations(hypernym, candidates, size, exclude_hypernyms)
+        return super().sample_random_hyponyms(hypernym, candidates, size, exclude_hypernyms)
 
     @property
     def active_entity_type(self):

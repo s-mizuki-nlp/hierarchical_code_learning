@@ -110,25 +110,25 @@ class BasicTaxonomyTestCases(unittest.TestCase):
 
         # impossible
         hypernym = "O"
-        pred = self._taxonomy.sample_non_hyponym(entity=hypernym, candidates=["N","O"], exclude_hypernyms=True, size=1)
+        pred = self._taxonomy.sample_non_hyponymy(entity=hypernym, candidates=["N", "O"], exclude_hypernyms=True, size=1)
         self.assertEqual(len(pred), 0)
 
         # impossible (automatic)
         hypernym = "J"
         candidates = self._taxonomy.hyponyms(hypernym) | self._taxonomy.hypernyms(hypernym)
-        pred = self._taxonomy.sample_non_hyponym(entity=hypernym, candidates=candidates, exclude_hypernyms=True, size=1)
+        pred = self._taxonomy.sample_non_hyponymy(entity=hypernym, candidates=candidates, exclude_hypernyms=True, size=1)
         self.assertEqual(len(pred), 0)
 
         # possible, but only one choice
         hypernym = "O"
-        pred = self._taxonomy.sample_non_hyponym(entity=hypernym, candidates=["N","O"], exclude_hypernyms=False, size=2)
+        pred = self._taxonomy.sample_non_hyponymy(entity=hypernym, candidates=["N", "O"], exclude_hypernyms=False, size=2)
         gt = ["N","N"]
         self.assertListEqual(pred, gt)
 
         # possible, but deterministic
         hypernym = "A"
         gt = set("I,H,L,K,C,N,O".split(","))
-        pred = self._taxonomy.sample_non_hyponym(entity=hypernym, exclude_hypernyms=True, size=7)
+        pred = self._taxonomy.sample_non_hyponymy(entity=hypernym, exclude_hypernyms=True, size=7)
         self.assertSetEqual(set(pred), gt)
 
     def test_sample_hyponymy_not_exclude_hypernyms(self):
@@ -138,7 +138,7 @@ class BasicTaxonomyTestCases(unittest.TestCase):
         # check if random sample does not include hyponyms
         for entity in all_entities:
             gt = all_entities - self._taxonomy.hyponyms(entity) - set(entity)
-            pred = self._taxonomy.sample_non_hyponym(entity, size=100, exclude_hypernyms=False)
+            pred = self._taxonomy.sample_non_hyponymy(entity, size=100, exclude_hypernyms=False)
             with self.subTest(hypernym=entity):
                 self.assertTrue(set(pred).issubset(gt))
 
@@ -149,6 +149,6 @@ class BasicTaxonomyTestCases(unittest.TestCase):
         # check if random sample does not include hyponyms and hypernyms
         for entity in all_entities:
             gt = all_entities - self._taxonomy.hyponyms(entity) - self._taxonomy.hypernyms(entity) - set(entity)
-            pred = self._taxonomy.sample_non_hyponym(entity, size=100, exclude_hypernyms=True)
+            pred = self._taxonomy.sample_non_hyponymy(entity, size=100, exclude_hypernyms=True)
             with self.subTest(hypernym=entity):
                 self.assertTrue(set(pred).issubset(gt))

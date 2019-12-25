@@ -135,6 +135,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelationTestCases(unittest.
                                                         embedding_batch_size=40, hyponymy_batch_size=4,
                                                         non_hyponymy_batch_size=24,
                                                         non_hyponymy_relation_distance=None,
+                                                        non_hyponymy_relation_target="both",
                                                         exclude_reverse_hyponymy_from_non_hyponymy_relation=True,
                                                         limit_hyponym_candidates_within_minibatch=False,
                                                         split_hyponymy_and_non_hyponymy=True,
