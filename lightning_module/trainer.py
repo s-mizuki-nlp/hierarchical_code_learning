@@ -5,7 +5,7 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, Union
 from collections import defaultdict
 import pickle
 import numpy as np
@@ -170,7 +170,7 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
                  loss_hyponymy: HyponymyScoreLoss,
                  use_intermediate_repr_for_hyponymy_score: bool = False,
                  loss_mutual_info: Optional[_Loss] = None,
-                 loss_non_hyponymy: Optional[NonHyponymyScoreLoss] = None,
+                 loss_non_hyponymy: Optional[Union[NonHyponymyScoreLoss, HyponymyScoreLoss]] = None,
                  dataloader_train: Optional[DataLoader] = None,
                  dataloader_val: Optional[DataLoader] = None,
                  dataloader_test: Optional[DataLoader] = None,
@@ -256,6 +256,16 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
             loss_non_hyponymy = self._loss_non_hyponymy(code_repr, lst_tup_non_hyponymy)
         else:
             loss_non_hyponymy = torch.tensor(0.0, dtype=torch.float32)
+            cache = self._loss_hyponymy.reduction
+            self._loss_hyponymy.reduction = "none"
+            lst_loss_hyponymy = self._loss_hyponymy(code_repr, lst_tup_hyponymy)
+            self._loss_hyponymy.reduction = cache
+            n_sample = len(lst_tup_hyponymy)
+            for l, (u, v, distance) in zip(lst_loss_hyponymy, lst_tup_hyponymy):
+                if distance < 0:
+                    loss_non_hyponymy += (l / n_sample)
+                    loss_hyponymy -= (l / n_sample)
+
 
         # (optional) mutual information loss
         if self._loss_mutual_info is not None:
