@@ -179,13 +179,13 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
 
         return dict_acc
 
-    def _area_under_curve(self, lst_true, lst_score, **kwargs):
-        ret = roc_auc_score(lst_true, lst_score)
+    def _area_under_curve(self, lst_gt, lst_score, **kwargs):
+        ret = roc_auc_score(lst_gt, lst_score)
         return ret
 
-    def _optimal_threshold(self, lst_true, lst_score, **kwargs):
+    def _optimal_threshold(self, lst_gt, lst_score, **kwargs):
         predictor = SoftHyponymyPredictor()
-        ret = predictor._calc_optimal_threshold(y_true=lst_true, probas_pred=lst_score, verbose=True)
+        ret = predictor._calc_optimal_threshold(y_true=lst_gt, probas_pred=lst_score, verbose=True)
         return ret
 
     def evaluate(self, hyponym_field_name: str = "hyponym",
@@ -234,7 +234,7 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
             if metric_name == "accuracy_by_category":
                 dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
             elif metric_name in ("area_under_curve", "optimal_threshold"):
-                dict_ret[metric_name] = f_metric(lst_true, lst_score)
+                dict_ret[metric_name] = f_metric(lst_gt, lst_score)
             else:
                 dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
 
@@ -266,13 +266,13 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
 
         return dict_acc
 
-    def _area_under_curve(self, lst_true, lst_score, **kwargs):
-        ret = roc_auc_score(lst_true, lst_score)
+    def _area_under_curve(self, lst_gt, lst_score, **kwargs):
+        ret = roc_auc_score(lst_gt, lst_score)
         return ret
 
-    def _optimal_threshold_hyponymy_propensity_score(self, lst_true, lst_score, **kwargs):
+    def _optimal_threshold_hyponymy_propensity_score(self, lst_gt, lst_score, **kwargs):
         predictor = SoftHyponymyPredictor()
-        ret = predictor._calc_optimal_threshold(y_true=lst_true, probas_pred=lst_score, verbose=True)
+        ret = predictor._calc_optimal_threshold(y_true=lst_gt, probas_pred=lst_score, verbose=True)
         return ret
 
     def evaluate(self, hyponym_field_name: str = "hyponym",
@@ -331,7 +331,8 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
             if metric_name == "accuracy_by_category":
                 dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
             elif metric_name in ("area_under_curve", "optimal_threshold_hyponymy_propensity_score"):
-                dict_ret[metric_name] = f_metric(lst_true, lst_score)
+                lst_gt_binary = [gt in ("hyponymy","reverse-hyponymy") for gt in lst_gt]
+                dict_ret[metric_name] = f_metric(lst_gt_binary, lst_score)
             else:
                 dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
 
