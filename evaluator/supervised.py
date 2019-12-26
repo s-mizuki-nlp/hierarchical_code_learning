@@ -17,7 +17,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from dataset.word_embeddings import AbstractWordEmbeddingsDataset
 from model.autoencoder import AutoEncoder
-from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, f1_score
+from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, f1_score, roc_auc_score
 from .hyponymy import SoftHyponymyPredictor
 
 class BaseEvaluator(object, metaclass=ABCMeta):
@@ -163,6 +163,8 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
 
     def _update_task_specific_evaluator(self):
         self._default_evaluator["accuracy_by_category"] = self._accuracy_by_category
+        self._default_evaluator["area_under_curve"] = self._area_under_curve
+        self._default_evaluator["optimal_threshold"] = self._optimal_threshold
 
     def _accuracy_by_category(self, lst_gt, lst_pred, lst_category, **kwargs):
         dict_denom = defaultdict(int)
@@ -177,6 +179,15 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
 
         return dict_acc
 
+    def _area_under_curve(self, lst_true, lst_score, **kwargs):
+        ret = roc_auc_score(lst_true, lst_score)
+        return ret
+
+    def _optimal_threshold(self, lst_true, lst_score, **kwargs):
+        predictor = SoftHyponymyPredictor()
+        ret = predictor._calc_optimal_threshold(y_true=lst_true, probas_pred=lst_score, verbose=True)
+        return ret
+
     def evaluate(self, hyponym_field_name: str = "hyponym",
                 hypernym_field_name: str = "hypernym",
                 class_label_field_name: str = "class",
@@ -189,8 +200,8 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
         predictor = SoftHyponymyPredictor(threshold_soft_hyponymy_score=threshold_soft_hyponymy_score)
         evaluator = self._default_evaluator if evaluator is None else evaluator
 
-        lst_gt = []
-        lst_pred = []
+        lst_gt = []; lst_pred = []
+        lst_score = []; lst_true = []
         lst_category = []
         for batch in self._evaluation_data_loader:
             # take hyponyms, hypernyms
@@ -205,15 +216,16 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
 
             # predict directionality using code probabilities
             # suppose x is hypernym and y is hyponym
-            lst_pred_b = []
-            for mat_x, mat_y in zip(t_mat_code_prob_hypernyms, t_mat_code_prob_hyponyms):
-                pred = predictor.predict_hyponymy(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
-                lst_pred_b.append(pred)
-
-            # store the ground-truth and prediction
             lst_gt_b = self._tensor_to_list(batch[class_label_field_name])
-            lst_gt.extend(lst_gt_b)
-            lst_pred.extend(lst_pred_b)
+            for mat_x, mat_y, gt in zip(t_mat_code_prob_hypernyms, t_mat_code_prob_hyponyms, lst_gt_b):
+                pred = predictor.predict_hyponymy(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
+                score = predictor.calc_soft_hyponymy_score(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
+                lst_pred.append(pred)
+                lst_score.append(score)
+                lst_gt.append(gt)
+                lst_true.append(pred == gt)
+
+            # store category information
             lst_category.extend(self._tensor_to_list(batch[category_field_name]))
 
         # calculate metrics
@@ -221,6 +233,8 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
         for metric_name, f_metric in evaluator.items():
             if metric_name == "accuracy_by_category":
                 dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
+            elif metric_name in ("area_under_curve", "optimal_threshold"):
+                dict_ret[metric_name] = f_metric(lst_true, lst_score)
             else:
                 dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
 
@@ -236,6 +250,8 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
 
     def _update_task_specific_evaluator(self):
         self._default_evaluator["accuracy_by_category"] = self._accuracy_by_category
+        self._default_evaluator["area_under_curve"] = self._area_under_curve
+        self._default_evaluator["optimal_threshold_hyponymy_propensity_score"] = self._optimal_threshold_hyponymy_propensity_score
 
     def _accuracy_by_category(self, lst_gt, lst_pred, lst_category, **kwargs):
         dict_denom = defaultdict(int)
@@ -249,6 +265,15 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
             dict_acc[category] = dict_num[category] / dict_denom[category]
 
         return dict_acc
+
+    def _area_under_curve(self, lst_true, lst_score, **kwargs):
+        ret = roc_auc_score(lst_true, lst_score)
+        return ret
+
+    def _optimal_threshold_hyponymy_propensity_score(self, lst_true, lst_score, **kwargs):
+        predictor = SoftHyponymyPredictor()
+        ret = predictor._calc_optimal_threshold(y_true=lst_true, probas_pred=lst_score, verbose=True)
+        return ret
 
     def evaluate(self, hyponym_field_name: str = "hyponym",
                  hypernym_field_name: str = "hypernym",
@@ -272,8 +297,8 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
         else:
             raise NotImplementedError("`prediction_method` must be one of these: `simple,default`")
 
-        lst_gt = []
-        lst_pred = []
+        lst_gt = []; lst_pred = []
+        lst_score = []; lst_true = []
         lst_category = []
         for batch in self._evaluation_data_loader:
             # take hyponyms, hypernyms
@@ -288,15 +313,16 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
 
             # predict directionality using code probabilities
             # suppose x is hypernym and y is hyponym
-            lst_pred_b = []
-            for mat_x, mat_y in zip(t_mat_code_prob_hypernyms, t_mat_code_prob_hyponyms):
-                pred = predictor_function(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
-                lst_pred_b.append(pred)
-
-            # store the ground-truth and prediction
             lst_gt_b = self._tensor_to_list(batch[class_label_field_name])
-            lst_gt.extend(lst_gt_b)
-            lst_pred.extend(lst_pred_b)
+            for mat_x, mat_y, gt in zip(t_mat_code_prob_hypernyms, t_mat_code_prob_hyponyms, lst_gt_b):
+                pred = predictor_function(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
+                score = predictor.calc_hyponymy_propensity_score(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
+                lst_pred.append(pred)
+                lst_score.append(score)
+                lst_gt.append(gt)
+                lst_true.append(pred == gt)
+
+            # store category information
             lst_category.extend(self._tensor_to_list(batch[category_field_name]))
 
         # calculate metrics
@@ -304,6 +330,8 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
         for metric_name, f_metric in evaluator.items():
             if metric_name == "accuracy_by_category":
                 dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
+            elif metric_name in ("area_under_curve", "optimal_threshold_hyponymy_propensity_score"):
+                dict_ret[metric_name] = f_metric(lst_true, lst_score)
             else:
                 dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
 
