@@ -97,14 +97,9 @@ class CodeLengthAwareEncoder(SimpleEncoder):
 
     @property
     def gate_open_ratio(self):
-        if self._use_scheduled_code_length_predictor:
-            return self.code_length_predictor.gate_open_ratio
-        else:
-            return None
+        return getattr(self.code_length_predictor, "gate_open_ratio", None)
 
     @gate_open_ratio.setter
     def gate_open_ratio(self, value):
-        if self._use_scheduled_code_length_predictor:
-            self.code_length_predictor.gate_open_ratio = value
-        else:
-            pass
+        if self.gate_open_ratio is not None:
+            setattr(self.code_length_predictor, "gate_open_ratio", value)

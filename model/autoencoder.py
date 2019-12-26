@@ -41,6 +41,15 @@ class AutoEncoder(nn.Module):
         if self.temperature is not None:
             setattr(self._discretizer, "temperature", value)
 
+    @property
+    def gate_open_ratio(self):
+        return getattr(self._encoder, "gate_open_ratio", None)
+
+    @gate_open_ratio.setter
+    def gate_open_ratio(self, value):
+        if self.gate_open_ratio is not None:
+            setattr(self._encoder, "gate_open_ratio", value)
+
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).type(self._dtype)
 
