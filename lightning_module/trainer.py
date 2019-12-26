@@ -168,14 +168,14 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
                  model: MaskedAutoEncoder,
                  loss_reconst: ReconstructionLoss,
                  loss_hyponymy: HyponymyScoreLoss,
-                 use_intermediate_repr_for_hyponymy_score: bool = False,
-                 scheduler_of_discretizer_temperature: Optional[Callable[[float], float]] = None,
                  loss_mutual_info: Optional[_Loss] = None,
                  loss_non_hyponymy: Optional[Union[NonHyponymyScoreLoss, HyponymyScoreLoss]] = None,
                  dataloader_train: Optional[DataLoader] = None,
                  dataloader_val: Optional[DataLoader] = None,
                  dataloader_test: Optional[DataLoader] = None,
-                 learning_rate: Optional[float] = 0.001
+                 learning_rate: Optional[float] = 0.001,
+                 use_intermediate_repr_for_hyponymy_score: bool = False,
+                 model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
                  ):
 
         super().__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate)
@@ -184,12 +184,15 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         self._loss_non_hyponymy = loss_non_hyponymy
         self._use_intermediate_repr_for_hyponymy_score = use_intermediate_repr_for_hyponymy_score
 
-        self._scheduler_of_discretizer_temperature = scheduler_of_discretizer_temperature
-
         self._scale_loss_reconst = loss_reconst.scale
         self._scale_loss_mi = loss_mutual_info.scale if loss_mutual_info is not None else 1.
         self._scale_loss_hyponymy = loss_hyponymy.scale
         self._scale_loss_non_hyponymy = loss_non_hyponymy.scale if loss_non_hyponymy is not None else 1.
+
+        if model_parameter_schedulers is None:
+            self._model_parameter_schedulers = {}
+        else:
+            self._model_parameter_schedulers = model_parameter_schedulers
 
     def training_step(self, data_batch, batch_nb):
 
@@ -290,22 +293,24 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
 
         return {"val_loss":loss, "log":metrics}
 
-    def on_epoch_end(self):
-        if hasattr(self._model._encoder, "gate_open_ratio"):
-            coef_accelerator = 1.2
-            current_value = self._model._encoder.gate_open_ratio
+    def _update_model_parameters(self, current_step: Optional[float] = None):
+        if current_step is None:
+            current_step = self.current_epoch / self.trainer.max_nb_epochs
+
+        for parameter_name, scheduler_function in self._model_parameter_schedulers.items():
+            if scheduler_function is None:
+                continue
+
+            current_value = getattr(self._model, parameter_name, None)
             if current_value is not None:
-                new_value = min(1.0, coef_accelerator * (self.current_epoch+1) / self.trainer.max_nb_epochs)
-                self._model._encoder.gate_open_ratio = new_value
+                new_value = scheduler_function(current_step)
+                setattr(self._model, parameter_name, new_value)
 
                 # DEBUG
-                print(f"update gate_open_ratio: {current_value:.2} -> {new_value:.2}")
+                print(f"{parameter_name}: {current_value:.2f} -> {new_value:.2f}")
 
-        if self._scheduler_of_discretizer_temperature is not None:
-            current_value = self._model.temperature
-            if current_value is not None:
-                new_value = self._scheduler_of_discretizer_temperature(self.current_epoch+1 / self.trainer.max_nb_epochs)
-                self._model.temperature = new_value
+    def on_epoch_start(self):
+        self._update_model_parameters()
 
 
 class SupervisedCodeLengthTrainer(UnsupervisedTrainer):
