@@ -238,7 +238,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                                                                 exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation)
                     lst_tup_sample_b.extend(lst_tup_sample_b_swap_hypo)
                 if self._non_hyponymy_relation_target in ("hypernym","both"):
-                    lst_tup_sample_b_swap_hyper = self._taxonomy.sample_random_hyponyms(entity=hypo, candidates=set_candidates, size=size_per_sample,
+                    lst_tup_sample_b_swap_hyper = self._taxonomy.sample_random_hypernyms(entity=hypo, candidates=set_candidates, size=size_per_sample,
                                                                 exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation)
                     lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper)
 
