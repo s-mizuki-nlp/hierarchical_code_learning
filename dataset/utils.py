@@ -5,12 +5,12 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
-from typing import Optional, Iterable, Tuple, Set, Type, List, Dict
-from collections import defaultdict
+from typing import Optional, Iterable, Tuple, Set, Type, List, Dict, Callable
+from collections import defaultdict, Counter
 from functools import lru_cache
 import warnings
 import networkx as nx
-import random
+import numpy as np
 import progressbar
 
 from .lexical_knowledge import HyponymyDataset
@@ -47,11 +47,15 @@ class BasicTaxonomy(object):
         self._nodes = set(graph.nodes)
 
     def record_ancestors_and_descendeants(self, iter_hyponymy_pairs):
+        self._hyponym_frequency = Counter()
+        self._hypernym_frequency = Counter()
         self._ancestors = defaultdict(set)
         self._descendants = defaultdict(set)
         for hypernym, hyponym in iter_hyponymy_pairs:
             self._ancestors[hyponym].add(hypernym)
             self._descendants[hypernym].add(hyponym)
+            self._hyponym_frequency[hyponym] += 1
+            self._hypernym_frequency[hypernym] += 1
 
     def _find_root_nodes(self, graph) -> Set[str]:
         hash_value = graph.__hash__()
@@ -61,6 +65,12 @@ class BasicTaxonomy(object):
         root_nodes = set([k for k,v in graph.in_degree() if v == 0])
         self._cache_root_nodes[hash_value] = root_nodes
         return root_nodes
+
+    def hyponym_frequency(self, entity, not_exist: int = 0):
+        return self._hyponym_frequency.get(entity, not_exist)
+
+    def hypernym_frequency(self, entity, not_exist: int = 0):
+        return self._hypernym_frequency.get(entity, not_exist)
 
     def hypernyms(self, entity):
         return nx.ancestors(self.dag, entity).union(self._ancestors.get(entity, set()))
@@ -136,7 +146,9 @@ class BasicTaxonomy(object):
             dist = - min(lst_path_length)
         return dtype(dist)
 
-    def sample_non_hyponymy(self, entity, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
+    def sample_non_hyponymy(self, entity, candidates: Optional[Iterable[str]] = None,
+                            size: int = 1, exclude_hypernyms: bool = True,
+                            candidate_weight_function = None) -> List[str]:
         graph = self.dag
         if entity not in graph:
             return []
@@ -150,27 +162,50 @@ class BasicTaxonomy(object):
 
         if len(candidates) == 0:
             return []
+        elif len(candidates) == 1:
+            return [next(iter(candidates))]*size
 
-        size = min(size, len(candidates))
-        # sample without replacement
-        sampled = random.sample(candidates, k=size)
+        # sampling with replacement
+        # if `candidate_weight_function` is specified, then weighted sampling
+        candidates = list(candidates)
+        if candidate_weight_function is None:
+            sampled = np.random.choice(candidates, size=size)
+        else:
+            vec_weights = np.fromiter(map(candidate_weight_function, candidates), dtype=np.float)
+            vec_weights = vec_weights / np.sum(vec_weights)
+            sampled = np.random.choice(candidates, size=size, p=vec_weights)
+
+        sampled = sampled.tolist()
 
         return sampled
 
     def sample_random_hyponyms(self, entity: str,
                                candidates: Optional[Iterable[str]] = None,
-                               size: int = 1, exclude_hypernyms: bool = True):
-
-        lst_non_hyponymy_entities = self.sample_non_hyponymy(entity, candidates, size, exclude_hypernyms)
+                               size: int = 1, exclude_hypernyms: bool = True,
+                               weighted_sampling: bool = False):
+        if weighted_sampling:
+            weight_function = lambda e: self.hyponym_frequency(e, not_exist=1)
+        else:
+            weight_function = None
+        lst_non_hyponymy_entities = self.sample_non_hyponymy(entity=entity, candidates=candidates,
+                                                             size=size, exclude_hypernyms=exclude_hypernyms,
+                                                             candidate_weight_function=weight_function)
         lst_ret = [(entity, hyponym, self.hyponymy_distance_fast(entity, hyponym)) for hyponym in lst_non_hyponymy_entities]
 
         return lst_ret
 
     def sample_random_hypernyms(self, entity: str,
-                               candidates: Optional[Iterable[str]] = None,
-                               size: int = 1, exclude_hypernyms: bool = True):
+                                candidates: Optional[Iterable[str]] = None,
+                                size: int = 1, exclude_hypernyms: bool = True,
+                                weighted_sampling: bool = False):
 
-        lst_non_hyponymy_entities = self.sample_non_hyponymy(entity, candidates, size, exclude_hypernyms)
+        if weighted_sampling:
+            weight_function = lambda e: self.hypernym_frequency(e, not_exist=1)
+        else:
+            weight_function = None
+        lst_non_hyponymy_entities = self.sample_non_hyponymy(entity=entity, candidates=candidates,
+                                                             size=size, exclude_hypernyms=exclude_hypernyms,
+                                                             candidate_weight_function=weight_function)
         lst_ret = [(hypernym, entity, self.hyponymy_distance_fast(hypernym, entity)) for hypernym in lst_non_hyponymy_entities]
 
         return lst_ret

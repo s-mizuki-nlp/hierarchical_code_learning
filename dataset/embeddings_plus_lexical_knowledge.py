@@ -143,6 +143,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
     def __init__(self, word_embeddings_dataset: AbstractWordEmbeddingsDataset, hyponymy_dataset: HyponymyDataset,
                  embedding_batch_size: int, hyponymy_batch_size: int, non_hyponymy_batch_size: Optional[int] = None,
+                 non_hyponymy_weighted_sampling: bool = False,
                  non_hyponymy_relation_distance: Optional[float] = None,
                  non_hyponymy_relation_target: str = "hyponym",
                  exclude_reverse_hyponymy_from_non_hyponymy_relation: bool = True,
@@ -165,6 +166,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         self._non_hyponymy_multiple = non_hyponymy_batch_size // hyponymy_batch_size
         self._non_hyponymy_relation_distance = non_hyponymy_relation_distance
         self._non_hyponymy_relation_target = non_hyponymy_relation_target
+        self._non_hyponymy_weighted_sampling = non_hyponymy_weighted_sampling
         self._exclude_reverse_hyponymy_from_non_hyponymy_relation = exclude_reverse_hyponymy_from_non_hyponymy_relation
         self._limit_hyponym_candidates_within_minibatch = limit_hyponym_candidates_within_minibatch
         self._split_hyponymy_and_non_hyponymy = split_hyponymy_and_non_hyponymy
@@ -235,11 +237,13 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             if isinstance(self._taxonomy, BasicTaxonomy):
                 if self._non_hyponymy_relation_target in ("hyponym","both"):
                     lst_tup_sample_b_swap_hypo = self._taxonomy.sample_random_hyponyms(entity=hyper, candidates=set_candidates, size=size_per_sample,
-                                                                exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation)
+                                                                exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation,
+                                                                weighted_sampling=self._non_hyponymy_weighted_sampling)
                     lst_tup_sample_b.extend(lst_tup_sample_b_swap_hypo)
                 if self._non_hyponymy_relation_target in ("hypernym","both"):
                     lst_tup_sample_b_swap_hyper = self._taxonomy.sample_random_hypernyms(entity=hypo, candidates=set_candidates, size=size_per_sample,
-                                                                exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation)
+                                                                exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation,
+                                                                weighted_sampling=self._non_hyponymy_weighted_sampling)
                     lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper)
 
             elif isinstance(self._taxonomy, WordNetTaxonomy):
