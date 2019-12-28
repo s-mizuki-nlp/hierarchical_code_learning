@@ -11,7 +11,7 @@ import torch
 import numpy as np
 from sklearn.metrics import precision_recall_curve
 
-from model.loss import HyponymyScoreLoss
+from model.loss_supervised import HyponymyScoreLoss
 from . import utils
 
 array_like = Union[torch.Tensor, np.ndarray]

@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import torch
 from . import utils
-from model.loss import HyponymyScoreLoss
+from model.loss_supervised import HyponymyScoreLoss
 
 
 class HyponymyScoreLossLayer(unittest.TestCase):

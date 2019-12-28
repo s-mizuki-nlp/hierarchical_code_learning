@@ -3,7 +3,7 @@
 
 import os, sys, io
 
-from model.loss import ReconstructionLoss, MutualInformationLoss
+from model.loss_unsupervised import ReconstructionLoss, MutualInformationLoss
 from model.discretizer import StraightThroughEstimator, GumbelSoftmax, Entmax15Estimator
 
 hyper_parameters = {

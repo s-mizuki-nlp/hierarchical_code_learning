@@ -23,7 +23,7 @@ from lightning_module.trainer import UnsupervisedTrainer
 from model.autoencoder import AutoEncoder
 from model.encoder import SimpleEncoder
 from model.decoder import SimpleDecoder
-from model.loss import ReconstructionLoss
+from model.loss_unsupervised import ReconstructionLoss
 from dataset.word_embeddings import Word2VecDataset, FastTextDataset
 
 _RANDOM_SEED = 0

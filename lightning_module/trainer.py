@@ -17,7 +17,9 @@ from torch.optim import Adam
 import pytorch_lightning as pl
 
 from model.autoencoder import AutoEncoder, MaskedAutoEncoder
-from model.loss import ReconstructionLoss, HyponymyScoreLoss, NonHyponymyScoreLoss
+from model.loss_unsupervised import ReconstructionLoss
+from model.loss_supervised import HyponymyScoreLoss
+
 
 class UnsupervisedTrainer(pl.LightningModule):
 
@@ -169,7 +171,7 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
                  loss_reconst: ReconstructionLoss,
                  loss_hyponymy: HyponymyScoreLoss,
                  loss_mutual_info: Optional[_Loss] = None,
-                 loss_non_hyponymy: Optional[Union[NonHyponymyScoreLoss, HyponymyScoreLoss]] = None,
+                 loss_non_hyponymy: Optional[HyponymyScoreLoss] = None,
                  dataloader_train: Optional[DataLoader] = None,
                  dataloader_val: Optional[DataLoader] = None,
                  dataloader_test: Optional[DataLoader] = None,
