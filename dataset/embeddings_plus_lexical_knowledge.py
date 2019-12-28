@@ -17,7 +17,9 @@ from .utils import BasicTaxonomy, WordNetTaxonomy
 class WordEmbeddingsAndHyponymyDataset(Dataset):
 
     def __init__(self, word_embeddings_dataset: AbstractWordEmbeddingsDataset, hyponymy_dataset: HyponymyDataset,
-                 embedding_batch_size: int, hyponymy_batch_size: int, verbose: bool = False, **kwargs_hyponymy_dataloader):
+                 embedding_batch_size: int, hyponymy_batch_size: int,
+                 enable_entity_depth_information: bool = False,
+                 verbose: bool = False, **kwargs_hyponymy_dataloader):
 
         assert embedding_batch_size >= 2*hyponymy_batch_size, f"`embedding_batch_size` must be two times larger than `hyponymy_batch_size`."
 
@@ -31,8 +33,18 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
         self._hyponymy_dataloader = DataLoader(hyponymy_dataset, collate_fn=lambda v:v, batch_size=hyponymy_batch_size, **kwargs_hyponymy_dataloader)
         self._verbose = verbose
 
+        self._enable_entity_depth_information = enable_entity_depth_information
+
         if verbose:
             self.verify_batch_sizes()
+
+        # build the taxonomy from hyponymy relation. it only uses direct hyponymy pairs.
+        if isinstance(hyponymy_dataset, WordNetHyponymyDataset):
+            self._taxonomy = WordNetTaxonomy(hyponymy_dataset=hyponymy_dataset)
+        elif isinstance(hyponymy_dataset, HyponymyDataset):
+            self._taxonomy = BasicTaxonomy(hyponymy_dataset=hyponymy_dataset)
+        else:
+            raise NotImplementedError(f"unsupported hyponymy dataset type: {type(hyponymy_dataset)}")
 
     def verify_batch_sizes(self):
 
@@ -92,12 +104,26 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
             distance = hyponymy["distance"]
             lst_hyponymy_relation.append((idx_hyper, idx_hypo, distance))
 
+        # create entity depth information
+        lst_entity_depth = []
+        for hyponymy in batch_hyponymy:
+            idx_hypo = token_to_index[hyponymy["hyponym"]]
+            idx_hyper = token_to_index[hyponymy["hypernym"]]
+            depth_hypo = self._taxonomy.depth(hyponymy["hyponym"], offset=1)
+            depth_hyper = self._taxonomy.depth(hyponymy["hypernym"], offset=1)
+            if depth_hypo is not None:
+                lst_entity_depth.append((idx_hypo, depth_hypo))
+            if depth_hyper is not None:
+                lst_entity_depth.append((idx_hyper, depth_hyper))
+
         batch = {
             "embedding": mat_embeddings,
             "entity": lst_tokens,
             "hyponymy_relation": lst_hyponymy_relation,
             "hyponymy_relation_raw": batch_hyponymy
         }
+        if self._enable_entity_depth_information:
+            batch["entity_depth"] = lst_entity_depth
         if self._verbose:
             batch["entity_sampled"] = lst_tokens_from_embeddings
 
@@ -149,10 +175,13 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                  exclude_reverse_hyponymy_from_non_hyponymy_relation: bool = True,
                  limit_hyponym_candidates_within_minibatch: bool = True,
                  split_hyponymy_and_non_hyponymy: bool = True,
+                 enable_entity_depth_information: bool = False,
                  verbose: bool = False, **kwargs_hyponymy_dataloader):
 
         super().__init__(word_embeddings_dataset, hyponymy_dataset,
-                 embedding_batch_size, hyponymy_batch_size, verbose=False, **kwargs_hyponymy_dataloader)
+                         embedding_batch_size, hyponymy_batch_size,
+                         enable_entity_depth_information = enable_entity_depth_information,
+                         verbose=False, **kwargs_hyponymy_dataloader)
 
         assert non_hyponymy_batch_size % hyponymy_batch_size == 0, f"`non_hyponymy_batch_size` must be a multiple of `hyponymy_batch_size`."
         if not limit_hyponym_candidates_within_minibatch:
@@ -170,6 +199,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         self._exclude_reverse_hyponymy_from_non_hyponymy_relation = exclude_reverse_hyponymy_from_non_hyponymy_relation
         self._limit_hyponym_candidates_within_minibatch = limit_hyponym_candidates_within_minibatch
         self._split_hyponymy_and_non_hyponymy = split_hyponymy_and_non_hyponymy
+        self._enable_entity_depth_information = enable_entity_depth_information
         self._verbose = verbose
 
         if non_hyponymy_relation_target == "both":
@@ -177,14 +207,6 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
         if verbose:
             self.verify_batch_sizes()
-
-        # build the taxonomy from hyponymy relation. it only uses direct hyponymy pairs.
-        if isinstance(hyponymy_dataset, WordNetHyponymyDataset):
-            self._taxonomy = WordNetTaxonomy(hyponymy_dataset=hyponymy_dataset)
-        elif isinstance(hyponymy_dataset, HyponymyDataset):
-            self._taxonomy = BasicTaxonomy(hyponymy_dataset=hyponymy_dataset)
-        else:
-            raise NotImplementedError(f"unsupported hyponymy dataset type: {type(hyponymy_dataset)}")
 
     def verify_batch_sizes(self):
 
