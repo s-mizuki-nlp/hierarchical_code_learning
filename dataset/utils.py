@@ -67,10 +67,16 @@ class BasicTaxonomy(object):
         return root_nodes
 
     def hyponym_frequency(self, entity, not_exist: int = 0):
-        return self._hyponym_frequency.get(entity, not_exist)
+        if isinstance(entity, Iterable):
+            return [self._hyponym_frequency.get(e, not_exist) for e in entity]
+        else:
+            return self._hyponym_frequency.get(entity, not_exist)
 
     def hypernym_frequency(self, entity, not_exist: int = 0):
-        return self._hypernym_frequency.get(entity, not_exist)
+        if isinstance(entity, Iterable):
+            return [self._hypernym_frequency.get(e, not_exist) for e in entity]
+        else:
+            return self._hypernym_frequency.get(entity, not_exist)
 
     def hypernyms(self, entity):
         return nx.ancestors(self.dag, entity).union(self._ancestors.get(entity, set()))
@@ -171,7 +177,7 @@ class BasicTaxonomy(object):
         if candidate_weight_function is None:
             sampled = np.random.choice(candidates, size=size)
         else:
-            vec_weights = np.fromiter(map(candidate_weight_function, candidates), dtype=np.float)
+            vec_weights = np.fromiter(candidate_weight_function(candidates), dtype=np.float)
             vec_weights = vec_weights / np.sum(vec_weights)
             sampled = np.random.choice(candidates, size=size, p=vec_weights)
 
