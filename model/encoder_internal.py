@@ -58,7 +58,7 @@ class StackedLSTMLayer(nn.Module):
         self._n_seq_len = n_seq_len
 
         self._lstm = nn.LSTM(input_size=n_dim_in, hidden_size=n_dim_hidden, num_layers=n_layer, bias=True, batch_first=True, bidirectional=False)
-        self._linear = nn.Linear(in_features=n_dim_hidden, out_features=n_dim_out, bias=True)
+        self._linear = nn.Linear(in_features=n_dim_hidden, out_features=n_dim_out, bias=False)
 
     def forward(self, x: torch.Tensor):
 
