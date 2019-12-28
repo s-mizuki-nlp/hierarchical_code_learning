@@ -140,6 +140,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelationTestCases(unittest.
                                                         exclude_reverse_hyponymy_from_non_hyponymy_relation=True,
                                                         limit_hyponym_candidates_within_minibatch=False,
                                                         split_hyponymy_and_non_hyponymy=True,
+                                                        enable_entity_depth_information=True,
                                                         verbose=True, shuffle=True)
         cls._dataloader = DataLoader(cls._dataset, batch_size=None, collate_fn=lambda v: v)
 
@@ -246,3 +247,16 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelationTestCases(unittest.
                 else:
                     distance_gt = self._dataset._non_hyponymy_relation_distance
                 self.assertEqual(distance, distance_gt)
+
+    def test_entity_depth(self):
+
+        batch = self._batch
+        entity = batch["entity"]
+        entity_depth = batch["entity_depth"]
+        taxonomy = self._dataset._taxonomy
+
+        for idx, depth in entity_depth:
+            e = entity[idx]
+            depth_gt = taxonomy.depth(e, offset=1)
+            with self.subTest(entity=e):
+                self.assertEqual(depth, depth_gt)
