@@ -11,7 +11,7 @@ from torch.nn.modules import loss as L
 class CodeLengthPredictionLoss(L._Loss):
 
     def __init__(self, scale: float = 1.0, normalize_code_length: bool = True, normalize_coefficient_for_ground_truth: float = 1.0,
-                 distance_metric: str = "scaled-mse",
+                 distance_metric: str = "mse",
                  size_average=None, reduce=None, reduction='mean'):
 
         super(CodeLengthPredictionLoss, self).__init__(size_average, reduce, reduction)
@@ -19,7 +19,25 @@ class CodeLengthPredictionLoss(L._Loss):
         self._scale = scale
         self._normalize_code_length = normalize_code_length
         self._normalize_coef_for_gt = normalize_coefficient_for_ground_truth
-        self._mse_loss = L.MSELoss(reduction=reduction)
+
+        self._distance_metric = distance_metric
+        if distance_metric == "mse":
+            self._func_distance = self._mse
+        elif distance_metric == "scaled-mse":
+            self._func_distance = self._scaled_mse
+        elif distance_metric == "standardized-mse":
+            self._func_distance = self._standardized_mse
+        elif distance_metric == "batchnorm-mse":
+            self._func_distance = self._batchnorm_mse
+            self._m = nn.BatchNorm1d(1)
+        elif distance_metric == "scaled-mae":
+            self._func_distance = self._scaled_mae
+        elif distance_metric == "cosine":
+            self._func_distance = self._cosine_distance
+        elif distance_metric == "hinge":
+            self._func_distance = self._hinge_distance
+        else:
+            raise AttributeError(f"unsupported distance metric was specified: {distance_metric}")
 
     def _dtype_and_device(self, t: torch.Tensor):
         return t.dtype, t.device
@@ -68,47 +86,13 @@ class CodeLengthPredictionLoss(L._Loss):
             # scale ground-truth value by the user-specified value.
             y_true *= self._normalize_coef_for_gt
 
-        loss = self._mse_loss(y_pred, y_true)
+        loss = self._func_distance(y_pred, y_true)
 
         return loss * self._scale
 
     @property
     def scale(self):
         return self._scale
-
-
-class HyponymyScoreLoss(L._Loss):
-
-    def __init__(self, scale: float = 1.0, normalize_hyponymy_score: bool = False, normalize_coefficient_for_ground_truth: float = 1.0,
-                 distance_metric: str = "scaled-mse",
-                 size_average=None, reduce=None, reduction='mean') -> None:
-
-        super(HyponymyScoreLoss, self).__init__(size_average, reduce, reduction)
-
-        self._scale = scale
-        self._normalize_hyponymy_score = normalize_hyponymy_score
-        self._normalize_coef_for_gt = normalize_coefficient_for_ground_truth
-        self._distance_metric = distance_metric
-        if distance_metric == "mse":
-            self._func_distance = self._mse
-        elif distance_metric == "scaled-mse":
-            self._func_distance = self._scaled_mse
-        elif distance_metric == "standardized-mse":
-            self._func_distance = self._standardized_mse
-        elif distance_metric == "batchnorm-mse":
-            self._func_distance = self._batchnorm_mse
-            self._m = nn.BatchNorm1d(1)
-        elif distance_metric == "scaled-mae":
-            self._func_distance = self._scaled_mae
-        elif distance_metric == "cosine":
-            self._func_distance = self._cosine_distance
-        elif distance_metric == "hinge":
-            self._func_distance = self._hinge_distance
-        else:
-            raise AttributeError(f"unsupported distance metric was specified: {distance_metric}")
-
-    def _dtype_and_device(self, t: torch.Tensor):
-        return t.dtype, t.device
 
     def _standardize(self, vec: torch.Tensor, dim=-1):
         means = vec.mean(dim=dim, keepdim=True)
@@ -145,28 +129,19 @@ class HyponymyScoreLoss(L._Loss):
         else:
             raise NotImplementedError(f"unsupported reduction method was specified: {self.reduction}")
 
-    def _intensity_to_probability(self, t_intensity):
-        # t_intensity can be either one or two dimensional tensor.
-        dtype, device = self._dtype_and_device(t_intensity)
-        pad_shape = t_intensity.shape[:-1] + (1,)
 
-        t_pad_begin = torch.zeros(pad_shape, dtype=dtype, device=device)
-        t_pad_end = torch.ones(pad_shape, dtype=dtype, device=device)
+class HyponymyScoreLoss(CodeLengthPredictionLoss):
 
-        t_prob = torch.cumprod(1.0 - torch.cat((t_pad_begin, t_intensity), dim=-1), dim=-1) * torch.cat((t_intensity, t_pad_end), dim=-1)
+    def __init__(self, scale: float = 1.0, normalize_hyponymy_score: bool = False, normalize_coefficient_for_ground_truth: float = 1.0,
+                 distance_metric: str = "scaled-mse",
+                 size_average=None, reduce=None, reduction='mean') -> None:
 
-        return t_prob
+        super(HyponymyScoreLoss, self).__init__(scale=scale,
+                    normalize_coefficient_for_ground_truth=normalize_coefficient_for_ground_truth,
+                    distance_metric=distance_metric,
+                    size_average=size_average, reduce=reduce, reduction=reduction)
 
-    def calc_soft_code_length(self, t_prob_c: torch.Tensor):
-        t_p_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0)).squeeze()
-        n_digits = t_p_c_zero.shape[-1]
-        dtype, device = self._dtype_and_device(t_prob_c)
-
-        t_p_at_n = self._intensity_to_probability(t_p_c_zero)
-        t_at_n = torch.arange(n_digits+1, dtype=dtype, device=device)
-
-        ret = torch.sum(t_p_at_n * t_at_n, dim=-1)
-        return ret
+        self._normalize_hyponymy_score = normalize_hyponymy_score
 
     def _calc_break_intensity(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
         # x: hypernym, y: hyponym
@@ -234,7 +209,3 @@ class HyponymyScoreLoss(L._Loss):
         loss = self._func_distance(y_pred, y_true)
 
         return loss * self._scale
-
-    @property
-    def scale(self):
-        return self._scale
