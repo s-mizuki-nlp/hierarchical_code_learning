@@ -8,7 +8,7 @@ from __future__ import print_function
 
 import unittest
 import networkx as nx
-from dataset.utils import BasicTaxonomy, WordNetTaxonomy
+from dataset.taxonomy import BasicTaxonomy, WordNetTaxonomy
 
 
 class BasicTaxonomyTestCases(unittest.TestCase):

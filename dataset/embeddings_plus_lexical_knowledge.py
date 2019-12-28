@@ -11,7 +11,7 @@ import numpy as np
 
 from .word_embeddings import AbstractWordEmbeddingsDataset
 from .lexical_knowledge import HyponymyDataset, WordNetHyponymyDataset
-from .utils import BasicTaxonomy, WordNetTaxonomy
+from .taxonomy import BasicTaxonomy, WordNetTaxonomy
 
 
 class WordEmbeddingsAndHyponymyDataset(Dataset):
