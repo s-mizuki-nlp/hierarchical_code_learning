@@ -55,7 +55,8 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         self._normalize_code_length = True
         self._normalize_coefficient_for_ground_truth = 1/3.0
         self._loss_layer = HyponymyScoreLoss(normalize_hyponymy_score=self._normalize_code_length,
-                                             normalize_coefficient_for_ground_truth=self._normalize_coefficient_for_ground_truth)
+                                             normalize_coefficient_for_ground_truth=self._normalize_coefficient_for_ground_truth,
+                                             distance_metric="mse")
 
     def test_intensity_to_probability(self):
 
