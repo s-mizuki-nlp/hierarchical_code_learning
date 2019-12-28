@@ -66,7 +66,7 @@ class CodeCountEvaluator(object):
             use_ground_truth = True
 
         else:
-            use_ground_truth = True
+            use_ground_truth = False
 
         mat_code_count_pred = np.zeros((self._n_digits, self._n_ary), dtype=np.int)
         mat_code_count_gt = mat_code_count_pred.copy() if use_ground_truth else None
