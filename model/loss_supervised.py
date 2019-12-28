@@ -42,54 +42,6 @@ class CodeLengthPredictionLoss(L._Loss):
     def _dtype_and_device(self, t: torch.Tensor):
         return t.dtype, t.device
 
-    def _intensity_to_probability(self, t_intensity):
-        # t_intensity can be either one or two dimensional tensor.
-        dtype, device = self._dtype_and_device(t_intensity)
-        pad_shape = t_intensity.shape[:-1] + (1,)
-
-        t_pad_begin = torch.zeros(pad_shape, dtype=dtype, device=device)
-        t_pad_end = torch.ones(pad_shape, dtype=dtype, device=device)
-
-        t_prob = torch.cumprod(1.0 - torch.cat((t_pad_begin, t_intensity), dim=-1), dim=-1) * torch.cat((t_intensity, t_pad_end), dim=-1)
-
-        return t_prob
-
-    def calc_soft_code_length(self, t_prob_c: torch.Tensor):
-        t_p_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0)).squeeze()
-        n_digits = t_p_c_zero.shape[-1]
-        dtype, device = self._dtype_and_device(t_prob_c)
-
-        t_p_at_n = self._intensity_to_probability(t_p_c_zero)
-        t_at_n = torch.arange(n_digits+1, dtype=dtype, device=device)
-
-        ret = torch.sum(t_p_at_n * t_at_n, dim=-1)
-        return ret
-
-    def forward(self, t_prob_c_batch: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """
-        evaluates L2 loss of the predicted code length and true code length in a normalized scale.
-
-        :param t_prob_c_batch: probability array of p(c_n=m|x); (n_batch, n_digits, n_ary)
-        :param y_true: true code length; (n_batch,)
-        """
-
-        # t_prob_c_batch: (N_b, N_digits, N_ary); t_prob_c_batch[b,n,m] = p(c_n=m|x_b)
-        # y_pred: (N_b,)
-        # y_true: (N_b,)
-        y_pred = self.calc_soft_code_length(t_prob_c=t_prob_c_batch)
-
-        # scale ground-truth value and predicted value
-        if self._normalize_code_length:
-            # scale predicted value by the number of digits. then value range will be (-1, +1)
-            n_digits = t_prob_c_batch.shape[1]
-            y_pred /= n_digits
-            # scale ground-truth value by the user-specified value.
-            y_true *= self._normalize_coef_for_gt
-
-        loss = self._func_distance(y_pred, y_true)
-
-        return loss * self._scale
-
     @property
     def scale(self):
         return self._scale
@@ -128,6 +80,62 @@ class CodeLengthPredictionLoss(L._Loss):
             return hinge_loss
         else:
             raise NotImplementedError(f"unsupported reduction method was specified: {self.reduction}")
+
+    def _intensity_to_probability(self, t_intensity):
+        # t_intensity can be either one or two dimensional tensor.
+        dtype, device = self._dtype_and_device(t_intensity)
+        pad_shape = t_intensity.shape[:-1] + (1,)
+
+        t_pad_begin = torch.zeros(pad_shape, dtype=dtype, device=device)
+        t_pad_end = torch.ones(pad_shape, dtype=dtype, device=device)
+
+        t_prob = torch.cumprod(1.0 - torch.cat((t_pad_begin, t_intensity), dim=-1), dim=-1) * torch.cat((t_intensity, t_pad_end), dim=-1)
+
+        return t_prob
+
+    def calc_soft_code_length(self, t_prob_c: torch.Tensor):
+        t_p_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0)).squeeze()
+        n_digits = t_p_c_zero.shape[-1]
+        dtype, device = self._dtype_and_device(t_prob_c)
+
+        t_p_at_n = self._intensity_to_probability(t_p_c_zero)
+        t_at_n = torch.arange(n_digits+1, dtype=dtype, device=device)
+
+        ret = torch.sum(t_p_at_n * t_at_n, dim=-1)
+        return ret
+
+    def forward(self, t_prob_c_batch: torch.Tensor, lst_code_length_tuple: List[Tuple[int, float]]) -> torch.Tensor:
+        """
+        evaluates L2 loss of the predicted code length and true code length in a normalized scale.
+
+        :param t_prob_c_batch: probability array of p(c_n=m|x); (n_batch, n_digits, n_ary)
+        :param lst_hyponymy_tuple: list of (entity index, entity depth) tuples
+        """
+
+        # x: hypernym, y: hyponym
+        dtype, device = self._dtype_and_device(t_prob_c_batch)
+
+        t_idx = torch.LongTensor([tup[0] for tup in lst_code_length_tuple], device=device)
+        y_true = torch.FloatTensor([tup[1] for tup in lst_code_length_tuple], device=device)
+
+        # t_prob_c_batch: (N_b, N_digits, N_ary); t_prob_c_batch[b,n,m] = p(c_n=m|x_b)
+        t_prob_c = torch.index_select(t_prob_c_batch, dim=0, index=t_idx)
+
+        # y_pred: (len(lst_code_length_tuple),)
+        # y_true: (len(lst_code_length_tuple),)
+        y_pred = self.calc_soft_code_length(t_prob_c=t_prob_c)
+
+        # scale ground-truth value and predicted value
+        if self._normalize_code_length:
+            # scale predicted value by the number of digits. then value range will be (-1, +1)
+            n_digits = t_prob_c_batch.shape[1]
+            y_pred /= n_digits
+            # scale ground-truth value by the user-specified value.
+            y_true *= self._normalize_coef_for_gt
+
+        loss = self._func_distance(y_pred, y_true)
+
+        return loss * self._scale
 
 
 class HyponymyScoreLoss(CodeLengthPredictionLoss):
@@ -180,7 +188,7 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
 
     def forward(self, t_prob_c_batch: torch.Tensor, lst_hyponymy_tuple: List[Tuple[int, int, float]]) -> torch.Tensor:
         """
-        evaluates L2 loss of the predicted hyponymy score and true hyponymy score.
+        evaluates loss of the predicted hyponymy score and true hyponymy score.
 
         :param t_prob_c_batch: probability array. shape: (n_batch, n_digits, n_ary), t_prob_c_batch[b,n,m] = p(c_n=m|x_b)
         :param lst_hyponymy_tuple: list of (hypernym index, hyponym index, hyponymy score) tuples
