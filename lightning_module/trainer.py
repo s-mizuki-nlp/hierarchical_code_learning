@@ -18,7 +18,7 @@ import pytorch_lightning as pl
 
 from model.autoencoder import AutoEncoder, MaskedAutoEncoder
 from model.loss_unsupervised import ReconstructionLoss
-from model.loss_supervised import HyponymyScoreLoss
+from model.loss_supervised import HyponymyScoreLoss, CodeLengthPredictionLoss
 
 
 class UnsupervisedTrainer(pl.LightningModule):
@@ -172,6 +172,7 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
                  loss_hyponymy: HyponymyScoreLoss,
                  loss_mutual_info: Optional[_Loss] = None,
                  loss_non_hyponymy: Optional[HyponymyScoreLoss] = None,
+                 loss_code_length: Optional[CodeLengthPredictionLoss] = None,
                  dataloader_train: Optional[DataLoader] = None,
                  dataloader_val: Optional[DataLoader] = None,
                  dataloader_test: Optional[DataLoader] = None,
@@ -184,12 +185,14 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
 
         self._loss_hyponymy = loss_hyponymy
         self._loss_non_hyponymy = loss_non_hyponymy
+        self._loss_code_length = loss_code_length
         self._use_intermediate_repr_for_hyponymy_score = use_intermediate_repr_for_hyponymy_score
 
         self._scale_loss_reconst = loss_reconst.scale
         self._scale_loss_mi = loss_mutual_info.scale if loss_mutual_info is not None else 1.
         self._scale_loss_hyponymy = loss_hyponymy.scale
         self._scale_loss_non_hyponymy = loss_non_hyponymy.scale if loss_non_hyponymy is not None else 1.
+        self._scale_loss_code_length = loss_code_length.scale if loss_code_length is not None else 1.
 
         if model_parameter_schedulers is None:
             self._model_parameter_schedulers = {}
@@ -222,19 +225,27 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         else:
             loss_non_hyponymy = torch.tensor(0.0, dtype=torch.float32)
 
+        # (optional) code length loss
+        if self._loss_code_length is not None:
+            lst_tup_entity_depth = data_batch["entity_depth"]
+            loss_code_length = self._loss_code_length(code_repr, lst_tup_entity_depth)
+        else:
+            loss_code_length = torch.tensor(0.0, dtype=torch.float32)
+
         # (optional) mutual information loss
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
         else:
             loss_mi = torch.tensor(0.0, dtype=torch.float32)
 
-        loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_mi
+        loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_code_length + loss_mi
 
         dict_losses = {
             "train_loss_reconst": loss_reconst,
             "train_loss_mutual_info": loss_mi / self._scale_loss_mi,
             "train_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
             "train_loss_non_hyponymy": loss_non_hyponymy / self._scale_loss_non_hyponymy,
+            "train_loss_code_length": loss_code_length / self._scale_loss_code_length,
             "train_loss": loss
         }
         return {"loss":loss, "log": dict_losses}
@@ -274,6 +285,12 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
                     loss_non_hyponymy += (l / n_sample)
                     loss_hyponymy -= (l / n_sample)
 
+        # (optional) code length loss
+        if self._loss_code_length is not None:
+            lst_tup_entity_depth = data_batch["entity_depth"]
+            loss_code_length = self._loss_code_length(code_repr, lst_tup_entity_depth)
+        else:
+            loss_code_length = torch.tensor(0.0, dtype=torch.float32)
 
         # (optional) mutual information loss
         if self._loss_mutual_info is not None:
@@ -281,13 +298,14 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         else:
             loss_mi = torch.tensor(0.0, dtype=torch.float32)
 
-        loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_mi
+        loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_code_length + loss_mi
 
         metrics = {
             "val_loss_reconst": loss_reconst,
             "val_loss_mutual_info": loss_mi / self._scale_loss_mi,
             "val_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
             "val_loss_non_hyponymy": loss_non_hyponymy / self._scale_loss_non_hyponymy,
+            "val_loss_code_length": loss_code_length / self._scale_loss_code_length,
             "val_loss": loss
         }
         metrics_repr = self._evaluate_code_stats(t_code_prob)
