@@ -79,7 +79,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         elif MultiDenseLayer in inspect.getmro(self._internal_layer_class):
             lst_layers = []
             for _ in range(self._n_digits):
-                l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=3, activation_function=F.relu)
+                l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=3, activation_function=F.tanh)
                 lst_layers.append(l)
         elif StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
             l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=1, n_seq_len=self._n_digits)
@@ -103,7 +103,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         if isinstance(self._internal_layer_class, StackedLSTMLayer):
             h_to_z = self.lst_h_to_z_nonzero[0]
             # t_z: (n_batch, n_digits, n_dim_hidden)
-            t_z = torch.log(F.softplus(h_to_z(t_h)))
+            t_z = torch.log(F.softplus(h_to_z(t_h)) + 1E-6)
             # lst_z: [(n_batch, n_dim_hidden)]
             lst_z = list(map(torch.squeeze, t_z.split(1, dim=1)))
         else:
