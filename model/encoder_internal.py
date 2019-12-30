@@ -11,7 +11,8 @@ from torch import nn
 
 class MultiDenseLayer(nn.Module):
 
-    def __init__(self, n_dim_in, n_dim_out, n_dim_hidden, n_layer, activation_function):
+    def __init__(self, n_dim_in, n_dim_out, n_dim_hidden, n_layer, activation_function,
+                 bias: bool = True):
         """
         multi-layer dense neural network with artibrary activation function
         output = Dense(iter(Activation(Dense())))(input)
@@ -29,7 +30,7 @@ class MultiDenseLayer(nn.Module):
         for k in range(n_layer):
             n_in = n_dim_in if k==0 else n_dim_hidden
             n_out = n_dim_out if k==(n_layer - 1) else n_dim_hidden
-            self._lst_dense.append(nn.Linear(n_in, n_out))
+            self._lst_dense.append(nn.Linear(n_in, n_out, bias=bias))
         self._activation = activation_function
         self._layers = nn.ModuleList(self._lst_dense)
 
