@@ -79,13 +79,13 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         elif MultiDenseLayer in inspect.getmro(self._internal_layer_class):
             lst_layers = []
             for _ in range(self._n_digits):
-                l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=3, activation_function=F.tanh)
+                l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=3, activation_function=F.relu)
                 lst_layers.append(l)
         elif StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
             l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=1, n_seq_len=self._n_digits)
             lst_layers = [l]
         else:
-            raise NotImplementedError(f"unsupported layer was specified: {type(self._internal_layer_class)}")
+            raise NotImplementedError(f"unsupported layer was specified: {self._internal_layer_class.__class__}")
         self.lst_h_to_z_nonzero = nn.ModuleList(lst_layers)
 
         # x -> p(c_n=0): p(c_n=0) = \sum_{d=1 to n} g_d(x)
@@ -100,14 +100,14 @@ class CodeLengthAwareEncoder(SimpleEncoder):
 
         # non-zero probability: p(c_n=k | x_b, c_n != 0)
         t_h = torch.tanh(self.x_to_h(input_x))
-        if isinstance(self._internal_layer_class, StackedLSTMLayer):
+        if StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
             h_to_z = self.lst_h_to_z_nonzero[0]
             # t_z: (n_batch, n_digits, n_dim_hidden)
             t_z = torch.log(F.softplus(h_to_z(t_h)) + 1E-6)
             # lst_z: [(n_batch, n_dim_hidden)]
             lst_z = list(map(torch.squeeze, t_z.split(1, dim=1)))
         else:
-            lst_z = [torch.log(F.softplus(h_to_z(t_h))) for h_to_z in self.lst_h_to_z_nonzero]
+            lst_z = [torch.log(F.softplus(h_to_z(t_h)) + 1E-6) for h_to_z in self.lst_h_to_z_nonzero]
         lst_prob_c_nonzero = [F.softmax(t_z, dim=-1) for t_z in lst_z]
 
         # t_prob_c_nonzero: (N_batch, N_digits, N_ary-1)
