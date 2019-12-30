@@ -80,7 +80,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
             lst_layers = []
             for _ in range(self._n_digits):
                 l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=3, activation_function=F.relu,
-                                    bias=True)
+                                    bias=False)
                 lst_layers.append(l)
         elif StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
             l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=1, n_seq_len=self._n_digits)
