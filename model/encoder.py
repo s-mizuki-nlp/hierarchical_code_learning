@@ -6,6 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 from typing import List, Optional
+import inspect
 import torch
 from torch import nn
 from torch.nn import functional as F
@@ -49,7 +50,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
 
     def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int,
                  n_dim_hidden: Optional[int] = None,
-                 internal_layer: Optional[nn.Module] = None,
+                 internal_layer_class: Optional[nn.Module] = None,
                  use_scheduled_code_length_predictor: bool = False,
                  dtype=torch.float32,
                  **kwargs_for_code_length_predictor):
@@ -62,7 +63,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         self._n_ary = n_ary
         self._dtype = dtype
         self._use_scheduled_code_length_predictor = use_scheduled_code_length_predictor
-        self._internal_layer = internal_layer
+        self._internal_layer_class = internal_layer_class
 
         self._build(**kwargs_for_code_length_predictor)
 
@@ -73,18 +74,18 @@ class CodeLengthAwareEncoder(SimpleEncoder):
 
         # h -> z_n: z_n = softplus(f_n(h))
         n_dim_h, n_dim_z = self._n_dim_hidden, self._n_ary-1
-        if (self._internal_layer is None) or isinstance(self._internal_layer, nn.Linear):
+        if (self._internal_layer_class is None) or (nn.Linear in inspect.getmro(self._internal_layer_class)):
             lst_layers = [nn.Linear(in_features=n_dim_h, out_features=n_dim_z) for _ in range(self._n_digits)]
-        elif isinstance(self._internal_layer, MultiDenseLayer):
+        elif MultiDenseLayer in inspect.getmro(self._internal_layer_class):
             lst_layers = []
             for _ in range(self._n_digits):
                 l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=3, activation_function=F.relu)
                 lst_layers.append(l)
-        elif isinstance(self._internal_layer, StackedLSTMLayer):
+        elif StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
             l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=1, n_seq_len=self._n_digits)
             lst_layers = [l]
         else:
-            raise NotImplementedError(f"unsupported layer was specified: {type(self._internal_layer)}")
+            raise NotImplementedError(f"unsupported layer was specified: {type(self._internal_layer_class)}")
         self.lst_h_to_z_nonzero = nn.ModuleList(lst_layers)
 
         # x -> p(c_n=0): p(c_n=0) = \sum_{d=1 to n} g_d(x)
@@ -99,7 +100,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
 
         # non-zero probability: p(c_n=k | x_b, c_n != 0)
         t_h = torch.tanh(self.x_to_h(input_x))
-        if isinstance(self._internal_layer, StackedLSTMLayer):
+        if isinstance(self._internal_layer_class, StackedLSTMLayer):
             h_to_z = self.lst_h_to_z_nonzero[0]
             # t_z: (n_batch, n_digits, n_dim_hidden)
             t_z = torch.log(F.softplus(h_to_z(t_h)))
