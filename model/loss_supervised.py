@@ -157,7 +157,7 @@ class CodeLengthDiffPredictionLoss(CodeLengthPredictionLoss):
         y_pred = t_code_length_y - t_code_length_x
 
         # scale ground-truth value and predicted value
-        if self._normalize_hyponymy_score:
+        if self._normalize_code_length:
             # scale predicted value by the number of digits. then value range will be (-1, +1)
             n_digits = t_prob_c_batch.shape[1]
             y_pred /= n_digits
