@@ -306,7 +306,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             if dist_orig > 0:
                 dist_rev = - dist_orig
             else:
-                dist_rev = self._taxonomy.hyponymy_distance(hypernym=hyper_rev, hyponym=hypo_rev)
+                dist_rev = self._taxonomy.hyponymy_distance_fast(hypernym=hyper_rev, hyponym=hypo_rev)
 
             d = {
                 "hyponym":hypo_rev,
