@@ -173,6 +173,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                  non_hyponymy_relation_distance: Optional[float] = None,
                  non_hyponymy_relation_target: str = "hyponym",
                  exclude_reverse_hyponymy_from_non_hyponymy_relation: bool = True,
+                 swap_hyponymy_relations: bool = False,
                  limit_hyponym_candidates_within_minibatch: bool = True,
                  split_hyponymy_and_non_hyponymy: bool = True,
                  enable_entity_depth_information: bool = False,
@@ -198,6 +199,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         self._non_hyponymy_weighted_sampling = non_hyponymy_weighted_sampling
         self._exclude_reverse_hyponymy_from_non_hyponymy_relation = exclude_reverse_hyponymy_from_non_hyponymy_relation
         self._limit_hyponym_candidates_within_minibatch = limit_hyponym_candidates_within_minibatch
+        self._swap_hyponymy_relations = swap_hyponymy_relations
         self._split_hyponymy_and_non_hyponymy = split_hyponymy_and_non_hyponymy
         self._enable_entity_depth_information = enable_entity_depth_information
         self._verbose = verbose
@@ -286,6 +288,27 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
         return lst_non_hyponymy_samples
 
+    def _create_swap_hyponymy_samples(self, batch_hyponymy: List[Dict[str,Union[str,float]]]):
+        lst_swap_hyponymy_samples = []
+        for hyponymy in batch_hyponymy:
+            hyper_rev = hyponymy["hyponym"]
+            hypo_rev = hyponymy["hypernym"]
+            dist_orig = hyponymy["distance"]
+
+            if dist_orig > 0:
+                dist_rev = - dist_orig
+            else:
+                dist_rev = self._taxonomy.hyponymy_distance(hypernym=hyper_rev, hyponym=hypo_rev)
+
+            d = {
+                "hyponym":hypo_rev,
+                "hypernym":hyper_rev,
+                "distance":dist_rev
+            }
+            lst_swap_hyponymy_samples.append(d)
+
+        return lst_swap_hyponymy_samples
+
     def _split_hyponymy_samples_and_non_hyponymy_samples(self, batch):
         lst_hyponymy_relation = []
         lst_hyponymy_relation_raw = []
@@ -328,8 +351,14 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                 size_per_sample = self._non_hyponymy_multiple
             batch_non_hyponymy = self._create_non_hyponymy_samples_from_hyponymy_samples(batch_hyponymy=batch_hyponymy,
                                                                                          size_per_sample=size_per_sample)
-            # create a minibatch from both hyponymy samples and non-hyponymy samples
             batch_hyponymy.extend(batch_non_hyponymy)
+
+            # (optional) create swapped samples
+            if self._swap_hyponymy_relations:
+                batch_hyponymy_swap = self._create_swap_hyponymy_samples(batch_hyponymy=batch_hyponymy)
+                batch_hyponymy.extend(batch_hyponymy_swap)
+
+            # create (and format) a minibatch from both hyponymy samples and non-hyponymy samples
             batch = self._create_batch_from_hyponymy_samples(batch_hyponymy=batch_hyponymy)
 
             # (optional) split hyponymy relation and non-hyponymy relation
@@ -353,8 +382,14 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                 size_per_sample = self._non_hyponymy_multiple
             batch_non_hyponymy = self._create_non_hyponymy_samples_from_hyponymy_samples(batch_hyponymy=batch_hyponymy,
                                                                                          size_per_sample=size_per_sample)
-            # create a minibatch from both hyponymy samples and non-hyponymy samples
             batch_hyponymy.extend(batch_non_hyponymy)
+
+            # (optional) create swapped samples
+            if self._swap_hyponymy_relations:
+                batch_hyponymy_swap = self._create_swap_hyponymy_samples(batch_hyponymy=batch_hyponymy)
+                batch_hyponymy.extend(batch_hyponymy_swap)
+
+            # create (and format) a minibatch from both hyponymy samples and non-hyponymy samples
             batch = self._create_batch_from_hyponymy_samples(batch_hyponymy=batch_hyponymy)
 
             # (optional) split hyponymy relation and non-hyponymy relation
