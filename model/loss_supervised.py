@@ -158,11 +158,33 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         t_p_c_x_zero = torch.index_select(t_prob_c_x, dim=-1, index=torch.tensor(0)).squeeze()
         t_p_c_y_zero = torch.index_select(t_prob_c_y, dim=-1, index=torch.tensor(0)).squeeze()
 
-        ret = 1.0 - t_p_c_x_zero - torch.sum(t_prob_c_x * t_prob_c_y, dim=-1) + 2 * t_p_c_x_zero * t_p_c_y_zero
+        ret = 1.0 - (torch.sum(t_prob_c_x * t_prob_c_y, dim=-1) - t_p_c_x_zero * t_p_c_y_zero)
         return ret
 
+    def calc_ancestor_probability(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
+        n_digits, n_ary = t_prob_c_x.shape[-2:]
+        dtype, device = self._dtype_and_device(t_prob_c_x)
 
-    def calc_soft_common_prefix_length(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
+        # t_p_c_*_zero: (n_batch, n_digits)
+        t_p_c_x_zero = torch.index_select(t_prob_c_x, dim=-1, index=torch.tensor(0)).squeeze()
+        t_p_c_y_zero = torch.index_select(t_prob_c_y, dim=-1, index=torch.tensor(0)).squeeze()
+        # t_beta: (n_batch, n_digits)
+        t_beta = t_p_c_x_zero*(1.- t_p_c_y_zero)
+
+        # t_gamma_hat: (n_batch, n_digits)
+        t_gamma_hat = torch.sum(t_prob_c_x*t_prob_c_y, dim=-1) - t_p_c_x_zero*t_p_c_y_zero
+        # prepend 1.0 at the beginning
+        # pad_shape: (n_batch, 1)
+        pad_shape = t_gamma_hat.shape[:-1] + (1,)
+        t_pad_begin = torch.ones(pad_shape, dtype=dtype, device=device)
+        # t_gamma: (n_batch, n_digits)
+        t_gamma = torch.cat((t_pad_begin, t_gamma_hat), dim=-1)[:,:n_digits]
+        # t_prob: (n_batch,)
+        t_prob = torch.sum(t_beta*torch.cumprod(t_gamma, dim=-1), dim=-1)
+
+        return t_prob
+
+    def calc_soft_least_common_ancestor_length(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
         n_digits, n_ary = t_prob_c_x.shape[-2:]
         dtype, device = self._dtype_and_device(t_prob_c_x)
 
@@ -179,12 +201,17 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         # x: hypernym, y: hyponym
         # t_prob_c_*[b,n,v] = Pr{C_n=v|x_b}; t_prob_c_*: (n_batch, n_digits, n_ary)
 
-        # hcl = hypernym code length
-        hcl = self.calc_soft_code_length(t_prob_c_x)
-        # cpl = common prefix length
-        cpl = self.calc_soft_common_prefix_length(t_prob_c_x, t_prob_c_y)
+        # l_hyper, l_hypo = hypernym / hyponym code length
+        l_hyper = self.calc_soft_code_length(t_prob_c_x)
+        l_hypo = self.calc_soft_code_length(t_prob_c_y)
+        # alpha = probability of hyponymy relation
+        alpha = self.calc_ancestor_probability(t_prob_c_x, t_prob_c_y)
+        # l_lca = length of the least common ancestor
+        l_lca = self.calc_soft_least_common_ancestor_length(t_prob_c_x, t_prob_c_y)
 
-        return cpl - hcl
+        score = alpha * (l_hypo - l_hyper) + (1. - alpha) * (l_lca - l_hyper)
+
+        return score
 
     def forward(self, t_prob_c_batch: torch.Tensor, lst_hyponymy_tuple: List[Tuple[int, int, float]]) -> torch.Tensor:
         """
