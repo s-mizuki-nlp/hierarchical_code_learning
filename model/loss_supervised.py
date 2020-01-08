@@ -178,7 +178,7 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         pad_shape = t_gamma_hat.shape[:-1] + (1,)
         t_pad_begin = torch.ones(pad_shape, dtype=dtype, device=device)
         # t_gamma: (n_batch, n_digits)
-        t_gamma = torch.cat((t_pad_begin, t_gamma_hat), dim=-1)[:,:n_digits]
+        t_gamma = torch.narrow(torch.cat((t_pad_begin, t_gamma_hat), dim=-1), dim=-1, start=0, length=n_digits)
         # t_prob: (n_batch,)
         t_prob = torch.sum(t_beta*torch.cumprod(t_gamma, dim=-1), dim=-1)
 
