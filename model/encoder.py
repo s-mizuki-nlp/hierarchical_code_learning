@@ -5,6 +5,7 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
+import warnings
 from typing import List, Optional
 import inspect
 import torch
@@ -103,15 +104,15 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         t_h = torch.tanh(self.x_to_h(input_x))
         if StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
             h_to_z = self.lst_h_to_z_nonzero[0]
-            # t_z: (n_batch, n_digits, n_dim_hidden)
+            # t_z: (n_batch, n_digits, n_ary-1)
             t_z = torch.log(F.softplus(h_to_z(t_h)) + 1E-6)
-            # lst_z: [(n_batch, n_dim_hidden)]
+            # lst_z: [(n_batch, n_ary-1)]*n_digits
             lst_z = list(map(torch.squeeze, t_z.split(1, dim=1)))
         else:
             lst_z = [torch.log(F.softplus(h_to_z(t_h)) + 1E-6) for h_to_z in self.lst_h_to_z_nonzero]
         lst_prob_c_nonzero = [F.softmax(t_z, dim=-1) for t_z in lst_z]
 
-        # t_prob_c_nonzero: (N_batch, N_digits, N_ary-1)
+        # t_prob_c_nonzero: (n_batch, n_digits, N_ary-1)
         t_prob_c_nonzero = torch.stack(lst_prob_c_nonzero, dim=1)
 
         # zero probability: p(c_n=0 | x_b)
@@ -132,3 +133,84 @@ class CodeLengthAwareEncoder(SimpleEncoder):
     def gate_open_ratio(self, value):
         if self.gate_open_ratio is not None:
             setattr(self.code_length_predictor, "gate_open_ratio", value)
+
+
+class IntegratedCodeLengthAwareEncoder(CodeLengthAwareEncoder):
+
+    def _dtype_and_device(self, t: torch.Tensor):
+        return t.dtype, t.device
+
+    def _build(self, **kwargs_for_code_length_predictor):
+
+        if len(kwargs_for_code_length_predictor) > 0:
+            warnings.warn("this class does not use independent code length predictor.")
+
+        # x -> h: h = tanh(W*x+b)
+        self.x_to_h = nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden)
+
+        # h -> z_n: z_n = softplus(f_n(h))
+        n_dim_h, n_dim_z = self._n_dim_hidden, self._n_ary
+        if (self._internal_layer_class is None) or (nn.Linear in inspect.getmro(self._internal_layer_class)):
+            lst_layers = [nn.Linear(in_features=n_dim_h, out_features=n_dim_z) for _ in range(self._n_digits)]
+        elif MultiDenseLayer in inspect.getmro(self._internal_layer_class):
+            lst_layers = []
+            for _ in range(self._n_digits):
+                l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=3, activation_function=F.relu,
+                                    bias=False)
+                lst_layers.append(l)
+        elif StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
+            l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=1, n_seq_len=self._n_digits)
+            lst_layers = [l]
+        else:
+            raise NotImplementedError(f"unsupported layer was specified: {self._internal_layer_class.__class__}")
+        self.lst_h_to_z = nn.ModuleList(lst_layers)
+
+    def _adjust_code_probability(self, t_prob_c: torch.Tensor):
+        dtype, device = self._dtype_and_device(t_prob_c)
+        n_batch = t_prob_c.shape[0]
+
+        # t_prob_zero_prev: (n_batch,)
+        t_prob_zero_prev = torch.zeros((n_batch,), dtype=dtype, device=device)
+        lst_t_prob_c_zero_adj = []
+        for digit in range(self._n_digits):
+            # t_prob_c_zero_n: (n_batch,)
+            t_prob_c_zero_n = t_prob_c[:,digit,0]
+            t_prob_c_zero_adj_n = t_prob_zero_prev + t_prob_c_zero_n*(1. - t_prob_zero_prev)
+            lst_t_prob_c_zero_adj.append(t_prob_c_zero_adj_n)
+            t_prob_zero_prev = t_prob_c_zero_adj_n
+
+        # t_prob_c_zero_adj: (n_batch, n_digits, 1)
+        t_prob_c_zero_adj = torch.stack(lst_t_prob_c_zero_adj, dim=1).unsqueeze(-1)
+
+        # t_prob_c_nonzero: (n_batch, n_digits, n_ary-1)
+        t_prob_c_nonzero = torch.narrow(t_prob_c, dim=-1, start=1, length=self._n_digits-1) + 1E-6
+        # coef_adj: (n_batch, n_digits, 1)
+        coef_adj = (1.-t_prob_c_zero_adj) / torch.sum(t_prob_c_nonzero, dim=-1, keepdim=True)
+        # t_prob_c_nonzero_adj: (n_batch, n_digits, n_ary-1)
+        t_prob_c_nonzero_adj = coef_adj * t_prob_c_nonzero
+
+        # t_prob_c_adj: (n_batch, n_digits, n_ary)
+        t_prob_c_adj = torch.cat((t_prob_c_zero_adj, t_prob_c_nonzero_adj), dim=-1)
+
+        return t_prob_c_adj
+
+    def forward(self, input_x: torch.Tensor):
+        # original probability: p(c_n=k | x_b)
+        t_h = torch.tanh(self.x_to_h(input_x))
+        if StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
+            h_to_z = self.lst_h_to_z[0]
+            # t_z: (n_batch, n_digits, n_ary)
+            t_z = torch.log(F.softplus(h_to_z(t_h)) + 1E-6)
+            # lst_z: [(n_batch, n_ary)]*n_digits
+            lst_z = list(map(torch.squeeze, t_z.split(1, dim=1)))
+        else:
+            lst_z = [torch.log(F.softplus(h_to_z(t_h)) + 1E-6) for h_to_z in self.lst_h_to_z]
+        lst_prob_c = [F.softmax(t_z, dim=-1) for t_z in lst_z]
+
+        # t_prob_c: (n_batch, n_digits, n_ary)
+        t_prob_c = torch.stack(lst_prob_c, dim=1)
+
+        # adjust zero probability: p(c_n=0) = p(c_n-1=0) + p(c_n=0)*p(c_n-1 != 0)
+        t_prob_c_adj = self._adjust_code_probability(t_prob_c)
+
+        return t_prob_c_adj
