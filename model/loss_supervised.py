@@ -138,6 +138,37 @@ class CodeLengthPredictionLoss(L._Loss):
         return loss * self._scale
 
 
+class CodeLengthDiffPredictionLoss(CodeLengthPredictionLoss):
+
+    def forward(self, t_prob_c_batch: torch.Tensor, lst_code_length_diff_tuple: List[Tuple[int, int, float]]) -> torch.Tensor:
+
+        # x: hypernym, y: hyponym
+        dtype, device = self._dtype_and_device(t_prob_c_batch)
+
+        t_idx_x = torch.LongTensor([tup[0] for tup in lst_code_length_diff_tuple], device=device)
+        t_idx_y = torch.LongTensor([tup[1] for tup in lst_code_length_diff_tuple], device=device)
+        y_true = torch.FloatTensor([tup[2] for tup in lst_code_length_diff_tuple], device=device)
+
+        # compute diff of code length
+        t_code_length = self.calc_soft_code_length(t_prob_c=t_prob_c_batch)
+        t_code_length_x = torch.index_select(t_code_length, dim=0, index=t_idx_x)
+        t_code_length_y = torch.index_select(t_code_length, dim=0, index=t_idx_y)
+        # code length diff = len(hyponym:y) - len(hypernym:x)
+        y_pred = t_code_length_y - t_code_length_x
+
+        # scale ground-truth value and predicted value
+        if self._normalize_hyponymy_score:
+            # scale predicted value by the number of digits. then value range will be (-1, +1)
+            n_digits = t_prob_c_batch.shape[1]
+            y_pred /= n_digits
+            # scale ground-truth value by the user-specified value.
+            y_true *= self._normalize_coef_for_gt
+
+        loss = self._func_distance(y_pred, y_true)
+
+        return loss * self._scale
+
+
 class HyponymyScoreLoss(CodeLengthPredictionLoss):
 
     def __init__(self, scale: float = 1.0, normalize_hyponymy_score: bool = False, normalize_coefficient_for_ground_truth: float = 1.0,
