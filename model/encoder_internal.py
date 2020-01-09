@@ -5,6 +5,7 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
+import warnings
 import torch
 from torch import nn
 
@@ -62,10 +63,37 @@ class StackedLSTMLayer(nn.Module):
 
         self._lstm = nn.LSTM(input_size=n_dim_in, hidden_size=n_dim_hidden, num_layers=n_layer, bias=True, batch_first=True, bidirectional=False)
         if time_distributed:
-            self._linear = nn.Linear(in_features=n_dim_hidden, out_features=n_dim_out, bias=False)
+            self._linear = nn.Linear(in_features=n_dim_hidden, out_features=n_dim_out, bias=True)
         else:
-            lst_layers = [nn.Linear(in_features=n_dim_hidden, out_features=n_dim_out, bias=False) for _ in range(n_seq_len)]
+            lst_layers = [nn.Linear(in_features=n_dim_hidden, out_features=n_dim_out, bias=True) for _ in range(n_seq_len)]
             self._linear = nn.ModuleList(lst_layers)
+
+    def _init_bias_to_specific_digit(self, digit: int):
+        if self._time_distributed:
+            bias = self._linear.bias
+            dtype, device = bias.dtype, bias.device
+            init_bias_value = [0]*self._n_dim_out
+            if digit == 0:
+                init_bias_value[0] = 5
+            elif digit == self._n_seq_len:
+                init_bias_value[0] = -5
+            else:
+                warnings.warn(f"when `time_distributed` is enabled, you can't specify {digit}")
+            bias.data = torch.tensor(init_bias_value, dtype=dtype, device=device)
+        else:
+            for idx, linear_layer in enumerate(self._linear):
+                bias = linear_layer.bias
+                dtype, device = bias.dtype, bias.device
+                init_bias_value = [0]*self._n_dim_out
+                if idx >= digit:
+                    init_bias_value[0] = 5
+                bias.data = torch.tensor(init_bias_value, dtype=dtype, device=device)
+
+    def init_bias_to_min(self):
+        self._init_bias_to_specific_digit(digit=0)
+
+    def init_bias_to_max(self):
+        self._init_bias_to_specific_digit(digit=self._n_seq_len)
 
     def forward(self, x: torch.Tensor):
 
