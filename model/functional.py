@@ -48,3 +48,7 @@ class CodeProbabiltyAdjuster(Function):
 
         return t_prob_c_adj
 
+    @staticmethod
+    def backward(ctx, grad_output):
+        result, = ctx.saved_tensors
+        return grad_output * result
