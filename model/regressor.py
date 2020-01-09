@@ -64,7 +64,8 @@ class SoftmaxBasedCDFEstimator(nn.Module):
 
     def __init__(self, n_dim_input: int, n_output: int,
                  n_dim_hidden: Optional[int] = None, n_mlp_layer: Optional[int] = 3,
-                 assign_nonzero_value_on_most_significant_digit: bool = True,
+                 assign_nonzero_value_on_most_significant_digit: bool = False,
+                 init_code_length: Optional[str] = None,
                  dtype=torch.float32):
 
         super(SoftmaxBasedCDFEstimator, self).__init__()
@@ -83,6 +84,14 @@ class SoftmaxBasedCDFEstimator(nn.Module):
 
         self._build()
 
+        if init_code_length is not None:
+            if init_code_length == "min":
+                self._init_bias_to_min()
+            elif init_code_length == "max":
+                self._init_bias_to_max()
+            else:
+                raise NotImplementedError(f"unknown value was specified: {init_code_length}")
+
     def _build(self):
 
         # linear transformation layers
@@ -95,6 +104,16 @@ class SoftmaxBasedCDFEstimator(nn.Module):
             layer = nn.Linear(in_features=n_in, out_features=n_out)
             lst_mlp_layer.append(layer)
         self.lst_mlp_layer = nn.ModuleList(lst_mlp_layer)
+
+    def _init_bias_to_min(self):
+        final_layer_bias = self.lst_mlp_layer[-1].bias
+        dtype, device = final_layer_bias.dtype, final_layer_bias.device
+        final_layer_bias.data = torch.tensor((10,) + (0,)*(self._n_output_softmax-1), dtype=dtype, device=device)
+
+    def _init_bias_to_max(self):
+        final_layer_bias = self.lst_mlp_layer[-1].bias
+        dtype, device = final_layer_bias.dtype, final_layer_bias.device
+        final_layer_bias.data = torch.tensor((0,)*(self._n_output_softmax-1) + (10,), dtype=dtype, device=device)
 
     def forward(self, input_x: torch.Tensor) -> torch.Tensor:
 
