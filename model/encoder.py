@@ -107,8 +107,10 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         elif StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
             l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=1, n_seq_len=self._n_digits)
             if self._n_ary_internal == self._n_ary:
-                init_code_length = kwargs_for_code_length_predictor.get("init_code_length", "")
-                if init_code_length == "min":
+                init_code_length = kwargs_for_code_length_predictor.get("init_code_length", None)
+                if init_code_length is None:
+                    pass
+                elif init_code_length == "min":
                     l.init_bias_to_min()
                 elif init_code_length == "max":
                     l.init_bias_to_max()

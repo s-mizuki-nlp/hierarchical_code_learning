@@ -27,6 +27,8 @@ class MultiDenseLayer(nn.Module):
         super().__init__()
 
         self._n_hidden = n_layer
+        self._n_dim_out = n_dim_out
+        self._bias = bias
         self._lst_dense = []
         for k in range(n_layer):
             n_in = n_dim_in if k==0 else n_dim_hidden
@@ -74,9 +76,9 @@ class StackedLSTMLayer(nn.Module):
             dtype, device = bias.dtype, bias.device
             init_bias_value = [0]*self._n_dim_out
             if digit == 0:
-                init_bias_value[0] = 5
+                init_bias_value[0] = 10
             elif digit == self._n_seq_len:
-                init_bias_value[0] = -5
+                init_bias_value[0] = -10
             else:
                 warnings.warn(f"when `time_distributed` is enabled, you can't specify {digit}")
             bias.data = torch.tensor(init_bias_value, dtype=dtype, device=device)
@@ -86,13 +88,15 @@ class StackedLSTMLayer(nn.Module):
                 dtype, device = bias.dtype, bias.device
                 init_bias_value = [0]*self._n_dim_out
                 if idx >= digit:
-                    init_bias_value[0] = 5
+                    init_bias_value[0] = 10
                 bias.data = torch.tensor(init_bias_value, dtype=dtype, device=device)
 
     def init_bias_to_min(self):
+        warnings.warn(f"initialize code length: 0")
         self._init_bias_to_specific_digit(digit=0)
 
     def init_bias_to_max(self):
+        warnings.warn(f"initialize code length: {self._n_seq_len}")
         self._init_bias_to_specific_digit(digit=self._n_seq_len)
 
     def forward(self, x: torch.Tensor):
