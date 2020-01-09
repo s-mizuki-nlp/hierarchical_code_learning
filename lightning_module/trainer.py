@@ -127,9 +127,9 @@ class UnsupervisedTrainer(pl.LightningModule):
             "val_mutual_info": loss_mi,
             "val_loss": loss
         }
-        if self._loss_mutual_info is not None:
-            metrics_repr = self._evaluate_code_stats(t_code_prob)
-            metrics.update(metrics_repr)
+        # if self._loss_mutual_info is not None:
+        metrics_repr = self._evaluate_code_stats(t_code_prob)
+        metrics.update(metrics_repr)
 
         return {"val_loss":loss, "log":metrics}
 
