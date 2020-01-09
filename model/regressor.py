@@ -143,9 +143,11 @@ class ScheduledSoftmaxBasedCDFEstimator(SoftmaxBasedCDFEstimator):
     def __init__(self, n_dim_input: int, n_output: int,
                  n_dim_hidden: Optional[int] = None, n_mlp_layer: Optional[int] = 3,
                  assign_nonzero_value_on_most_significant_digit: bool = True,
+                 init_code_length: Optional[str] = None,
                  dtype=torch.float32):
 
-        super().__init__(n_dim_input, n_output, n_dim_hidden, n_mlp_layer, assign_nonzero_value_on_most_significant_digit, dtype)
+        super().__init__(n_dim_input, n_output, n_dim_hidden, n_mlp_layer, assign_nonzero_value_on_most_significant_digit,
+                         init_code_length, dtype)
         self._gate_open_ratio = 0.0
 
         self._offset = -0.5 if assign_nonzero_value_on_most_significant_digit else 0.5
