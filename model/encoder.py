@@ -81,15 +81,15 @@ class CodeLengthAwareEncoder(SimpleEncoder):
             (CodeProbabiltyAdjuster in inspect.getmro(self._code_length_predictor_class)):
             self.code_length_predictor = CodeProbabiltyAdjuster.apply
             self._n_ary_internal = self._n_ary
-        elif SoftmaxBasedCDFEstimator in inspect.getmro(self._code_length_predictor_class):
-            self.code_length_predictor = SoftmaxBasedCDFEstimator(n_dim_input=self._n_dim_emb, n_output=self._n_digits,
-                                                                  dtype=self._dtype,
-                                                                  **kwargs_for_code_length_predictor)
-            self._n_ary_internal = self._n_ary - 1
         elif ScheduledSoftmaxBasedCDFEstimator in inspect.getmro(self._code_length_predictor_class):
             self.code_length_predictor = ScheduledSoftmaxBasedCDFEstimator(n_dim_input=self._n_dim_emb, n_output=self._n_digits,
                                                                            dtype=self._dtype,
                                                                            **kwargs_for_code_length_predictor)
+            self._n_ary_internal = self._n_ary - 1
+        elif SoftmaxBasedCDFEstimator in inspect.getmro(self._code_length_predictor_class):
+            self.code_length_predictor = SoftmaxBasedCDFEstimator(n_dim_input=self._n_dim_emb, n_output=self._n_digits,
+                                                                  dtype=self._dtype,
+                                                                  **kwargs_for_code_length_predictor)
             self._n_ary_internal = self._n_ary - 1
         else:
             raise NotImplementedError(f"unsupported layer was specified: {self._code_length_predictor_class.__class__}")
