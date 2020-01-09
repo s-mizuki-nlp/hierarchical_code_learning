@@ -115,15 +115,15 @@ class HyponymyScoreLossLayer(unittest.TestCase):
 
         self.assertTrue(np.allclose(expected, actual))
 
-    def test_soft_least_common_ancestor_length(self):
+    def test_soft_lowest_common_ancestor_length(self):
 
         t_test_x = self._t_arry_p_x
         t_test_y = self._t_arry_p_y
         arry_test_x = t_test_x.data.numpy()
         arry_test_y = t_test_y.data.numpy()
 
-        expected = np.array([utils_bugfix.calc_soft_least_common_ancestor_length(mat_x, mat_y) for mat_x, mat_y in zip(arry_test_x, arry_test_y)])
-        actual = self._loss_layer.calc_soft_least_common_ancestor_length(t_test_x, t_test_y).data.numpy()
+        expected = np.array([utils_bugfix.calc_soft_lowest_common_ancestor_length(mat_x, mat_y) for mat_x, mat_y in zip(arry_test_x, arry_test_y)])
+        actual = self._loss_layer.calc_soft_lowest_common_ancestor_length(t_test_x, t_test_y).data.numpy()
 
         self.assertTrue(np.allclose(expected, actual))
 

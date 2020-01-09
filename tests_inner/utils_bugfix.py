@@ -15,7 +15,7 @@ def calc_code_length(vec_c):
         ret += 1
     return ret
 
-def calc_least_common_ancestor_length(vec_x, vec_y):
+def calc_lowest_common_ancestor_length(vec_x, vec_y):
     ret = 0
     for x, y in zip(vec_x, vec_y):
         if (x == y) and (x != 0) and (y != 0):
@@ -36,7 +36,7 @@ def is_hypernymy_relation(vec_x, vec_y):
 
 def calc_hyponymy_score(vec_x, vec_y):
     is_hypernym = is_hypernymy_relation(vec_x, vec_y)
-    l_lca = calc_least_common_ancestor_length(vec_x, vec_y)
+    l_lca = calc_lowest_common_ancestor_length(vec_x, vec_y)
     l_hyper = calc_code_length(vec_x)
     l_hypo = calc_code_length(vec_y)
 
@@ -72,7 +72,7 @@ def calc_ancestor_probability(mat_prob_c_x, mat_prob_c_y):
     ret = np.sum(vec_beta*np.cumprod(vec_gamma))
     return ret
 
-def calc_soft_least_common_ancestor_length(mat_prob_c_x, mat_prob_c_y):
+def calc_soft_lowest_common_ancestor_length(mat_prob_c_x, mat_prob_c_y):
     n_digits, n_ary = mat_prob_c_x.shape
     vec_intensity = np.zeros(n_digits, dtype=np.float32)
     for idx, (vec_prob_c_x_t, vec_prob_c_y_t) in enumerate(zip(mat_prob_c_x, mat_prob_c_y)):
@@ -89,7 +89,7 @@ def calc_soft_hyponymy_score(mat_prob_c_x, mat_prob_c_y):
     vec_prob_c_x_zero = mat_prob_c_x[:,0]
     vec_prob_c_y_zero = mat_prob_c_y[:,0]
     alpha = calc_ancestor_probability(mat_prob_c_x, mat_prob_c_y)
-    l_lca = calc_soft_least_common_ancestor_length(mat_prob_c_x, mat_prob_c_y)
+    l_lca = calc_soft_lowest_common_ancestor_length(mat_prob_c_x, mat_prob_c_y)
     l_hyper = calc_soft_code_length(vec_prob_c_x_zero)
     l_hypo = calc_soft_code_length(vec_prob_c_y_zero)
     score = alpha*(l_hypo - l_hyper) + (1.-alpha)*(l_lca - l_hyper)

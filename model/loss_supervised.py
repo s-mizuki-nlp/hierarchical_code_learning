@@ -215,7 +215,7 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
 
         return t_prob
 
-    def calc_soft_least_common_ancestor_length(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
+    def calc_soft_lowest_common_ancestor_length(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
         n_digits, n_ary = t_prob_c_x.shape[-2:]
         dtype, device = self._dtype_and_device(t_prob_c_x)
 
@@ -237,8 +237,8 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         l_hypo = self.calc_soft_code_length(t_prob_c_y)
         # alpha = probability of hyponymy relation
         alpha = self.calc_ancestor_probability(t_prob_c_x, t_prob_c_y)
-        # l_lca = length of the least common ancestor
-        l_lca = self.calc_soft_least_common_ancestor_length(t_prob_c_x, t_prob_c_y)
+        # l_lca = length of the lowest common ancestor
+        l_lca = self.calc_soft_lowest_common_ancestor_length(t_prob_c_x, t_prob_c_y)
 
         score = alpha * (l_hypo - l_hyper) + (1. - alpha) * (l_lca - l_hyper)
 
