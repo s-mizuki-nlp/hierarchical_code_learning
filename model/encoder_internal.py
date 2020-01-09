@@ -49,7 +49,8 @@ class MultiDenseLayer(nn.Module):
 
 class StackedLSTMLayer(nn.Module):
 
-    def __init__(self, n_dim_in, n_dim_out, n_dim_hidden, n_layer, n_seq_len):
+    def __init__(self, n_dim_in, n_dim_out, n_dim_hidden, n_layer, n_seq_len,
+                 time_distributed: bool = True):
         super().__init__()
 
         self._n_dim_in = n_dim_in
@@ -57,9 +58,14 @@ class StackedLSTMLayer(nn.Module):
         self._n_dim_hidden = n_dim_hidden
         self._n_layer = n_layer
         self._n_seq_len = n_seq_len
+        self._time_distributed = time_distributed
 
         self._lstm = nn.LSTM(input_size=n_dim_in, hidden_size=n_dim_hidden, num_layers=n_layer, bias=True, batch_first=True, bidirectional=False)
-        self._linear = nn.Linear(in_features=n_dim_hidden, out_features=n_dim_out, bias=False)
+        if time_distributed:
+            self._linear = nn.Linear(in_features=n_dim_hidden, out_features=n_dim_out, bias=False)
+        else:
+            lst_layers = [nn.Linear(in_features=n_dim_hidden, out_features=n_dim_out, bias=False) for _ in range(n_seq_len)]
+            self._linear = nn.ModuleList(lst_layers)
 
     def forward(self, x: torch.Tensor):
 
@@ -75,6 +81,11 @@ class StackedLSTMLayer(nn.Module):
 
         # apply linear transformation
         # y: (n_batch, n_seq_len, n_dim_out)
-        y = self._linear(z)
+        if self._time_distributed:
+            y = self._linear(z)
+        else:
+            lst_z = torch.unbind(z, dim=1)
+            lst_y = [linear(z_n) for linear, z_n in zip(self._linear, lst_z)]
+            y = torch.stack(lst_y, dim=1)
 
         return y
