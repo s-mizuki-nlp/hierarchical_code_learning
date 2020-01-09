@@ -98,7 +98,7 @@ class UnsupervisedTrainer(pl.LightningModule):
         _EPS = 1E-6
         n_ary = self._model.n_ary
         soft_code_length = self._auxiliary.calc_soft_code_length(t_code_prob)
-        code_probability_divergence = torch.mean(torch.log(n_ary) + torch.sum(t_code_prob * torch.log(t_code_prob + _EPS), axis=-1), axis=-1)
+        code_probability_divergence = torch.mean(np.log(n_ary) + torch.sum(t_code_prob * torch.log(t_code_prob + _EPS), axis=-1), axis=-1)
 
         metrics = {
             "val_soft_code_length_mean":torch.mean(soft_code_length),
