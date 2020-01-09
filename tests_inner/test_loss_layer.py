@@ -4,7 +4,7 @@
 import unittest
 import numpy as np
 import torch
-from . import utils_bugfix
+from . import utils
 from model.loss_supervised import HyponymyScoreLoss
 
 
@@ -25,15 +25,15 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         vec_x_repr = np.array([1,2,0,0])
         vec_p_y_zero = np.array([0.02,0.05,0.1,0.6])
         vec_y_repr = np.array([1,2,3,0])
-        mat_p_x_1 = utils_bugfix.generate_probability_matrix(vec_p_x_zero, vec_x_repr, n_digits, n_ary, tau)
-        mat_p_y_1 = utils_bugfix.generate_probability_matrix(vec_p_y_zero, vec_y_repr, n_digits, n_ary, tau)
+        mat_p_x_1 = utils.generate_probability_matrix(vec_p_x_zero, vec_x_repr, n_digits, n_ary, tau)
+        mat_p_y_1 = utils.generate_probability_matrix(vec_p_y_zero, vec_y_repr, n_digits, n_ary, tau)
 
         vec_p_x_zero = np.array([0.02,0.05,0.05,0.8])
         vec_x_repr = np.array([1,2,3,0])
         vec_p_y_zero = np.array([0.02,0.05,0.6,0.6])
         vec_y_repr = np.array([1,2,0,0])
-        mat_p_x_2 = utils_bugfix.generate_probability_matrix(vec_p_x_zero, vec_x_repr, n_digits, n_ary, tau)
-        mat_p_y_2 = utils_bugfix.generate_probability_matrix(vec_p_y_zero, vec_y_repr, n_digits, n_ary, tau)
+        mat_p_x_2 = utils.generate_probability_matrix(vec_p_x_zero, vec_x_repr, n_digits, n_ary, tau)
+        mat_p_y_2 = utils.generate_probability_matrix(vec_p_y_zero, vec_y_repr, n_digits, n_ary, tau)
 
         # x:hypernym, y:hyponym
         # mat_p_*: (n_dim, n_ary)
@@ -63,7 +63,7 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         t_test = self._t_mat_p_x[:,0]
         arry_test = t_test.data.numpy()
 
-        expected = utils_bugfix._intensity_to_probability(arry_test)
+        expected = utils._intensity_to_probability(arry_test)
         actual = self._loss_layer._intensity_to_probability(t_test).data.numpy()
 
         self.assertTrue(np.allclose(expected, actual))
@@ -73,7 +73,7 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         t_test = self._t_arry_p_x[:,:,0]
         arry_test = t_test.data.numpy()
 
-        expected = np.stack(list(map(utils_bugfix._intensity_to_probability, arry_test)))
+        expected = np.stack(list(map(utils._intensity_to_probability, arry_test)))
         actual = self._loss_layer._intensity_to_probability(t_test).data.numpy()
 
         self.assertTrue(np.allclose(expected, actual))
@@ -83,7 +83,7 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         t_test = self._t_arry_p_x
         arry_test = t_test.data.numpy()
 
-        expected = np.array([utils_bugfix.calc_soft_code_length(mat_p[:,0]) for mat_p in arry_test])
+        expected = np.array([utils.calc_soft_code_length(mat_p[:, 0]) for mat_p in arry_test])
         actual = self._loss_layer.calc_soft_code_length(t_test).data.numpy()
 
         self.assertTrue(np.allclose(expected, actual))
@@ -95,7 +95,7 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         arry_test_x = t_test_x.data.numpy()
         arry_test_y = t_test_y.data.numpy()
 
-        expected = np.array([utils_bugfix._calc_break_intensity(v_x, v_y) for v_x, v_y in zip(arry_test_x, arry_test_y)])
+        expected = np.array([utils._calc_break_intensity(v_x, v_y) for v_x, v_y in zip(arry_test_x, arry_test_y)])
         actual = self._loss_layer._calc_break_intensity(t_test_x, t_test_y).data.numpy()
 
         self.assertTrue(np.allclose(expected, actual))
@@ -103,7 +103,7 @@ class HyponymyScoreLossLayer(unittest.TestCase):
     def test_break_intensity_two_dim(self):
 
         def calc_break_intensity_(mat_x, mat_y):
-            return np.array([utils_bugfix._calc_break_intensity(v_x, v_y) for v_x, v_y in zip(mat_x, mat_y)])
+            return np.array([utils._calc_break_intensity(v_x, v_y) for v_x, v_y in zip(mat_x, mat_y)])
 
         t_test_x = self._t_arry_p_x
         t_test_y = self._t_arry_p_y
@@ -122,7 +122,7 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         arry_test_x = t_test_x.data.numpy()
         arry_test_y = t_test_y.data.numpy()
 
-        expected = np.array([utils_bugfix.calc_soft_lowest_common_ancestor_length(mat_x, mat_y) for mat_x, mat_y in zip(arry_test_x, arry_test_y)])
+        expected = np.array([utils.calc_soft_lowest_common_ancestor_length(mat_x, mat_y) for mat_x, mat_y in zip(arry_test_x, arry_test_y)])
         actual = self._loss_layer.calc_soft_lowest_common_ancestor_length(t_test_x, t_test_y).data.numpy()
 
         self.assertTrue(np.allclose(expected, actual))
@@ -134,7 +134,7 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         arry_test_x = t_test_x.data.numpy()
         arry_test_y = t_test_y.data.numpy()
 
-        expected = np.array([utils_bugfix.calc_soft_hyponymy_score(mat_x, mat_y) for mat_x, mat_y in zip(arry_test_x, arry_test_y)])
+        expected = np.array([utils.calc_soft_hyponymy_score(mat_x, mat_y) for mat_x, mat_y in zip(arry_test_x, arry_test_y)])
         actual = self._loss_layer.calc_soft_hyponymy_score(t_test_x, t_test_y).data.numpy()
 
         self.assertTrue(np.allclose(expected, actual))
@@ -151,7 +151,7 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         arry_test_x = arry_test[lst_idx_x]
         arry_test_y = arry_test[lst_idx_y]
 
-        y_pred = np.array([utils_bugfix.calc_soft_hyponymy_score(mat_x, mat_y) for mat_x, mat_y in zip(arry_test_x, arry_test_y)])
+        y_pred = np.array([utils.calc_soft_hyponymy_score(mat_x, mat_y) for mat_x, mat_y in zip(arry_test_x, arry_test_y)])
 
         if self._normalize_code_length:
             y_pred /= self._n_digits
