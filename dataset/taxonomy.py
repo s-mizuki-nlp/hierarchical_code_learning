@@ -152,6 +152,32 @@ class BasicTaxonomy(object):
             dist = - min(lst_path_length)
         return dtype(dist)
 
+    def lowest_common_ancestor_depth(self, hypernym, hyponym, offset: int =1, dtype: Type = float):
+        graph = self.dag
+        if hypernym not in graph:
+            raise ValueError(f"invalid node is specified: {hypernym}")
+        if hyponym not in graph:
+            raise ValueError(f"invalid node is specified: {hyponym}")
+
+        ancestors_hypernym = nx.ancestors(self.dag, hypernym)
+        ancestors_hyponym = nx.ancestors(self.dag, hyponym)
+        ancestors_common = ancestors_hypernym.intersection(ancestors_hyponym)
+
+        # 1) hypernym is the ancestor of the hyponym: LCA is hypernym
+        if hypernym in ancestors_hyponym:
+            depth_lca = self.depth(entity=hypernym, offset=offset)
+        # 2) hyponym is the ancestor of the hypernym (=reverse hyponymy): LCA is hyponym
+        elif hyponym in ancestors_hypernym:
+            depth_lca = self.depth(entity=hyponym, offset=offset)
+        # 3) not connected -> LCA is empty
+        elif len(ancestors_common) == 0:
+            depth_lca = 0
+        # 4) these two entities are the co-hyponym: LCA is the deepest co-hyponym.
+        elif len(ancestors_common) > 0:
+            lst_depth = (self.depth(entity=common, offset=offset) for common in ancestors_common)
+            depth_lca = max(lst_depth)
+        return dtype(depth_lca)
+
     def sample_non_hyponymy(self, entity, candidates: Optional[Iterable[str]] = None,
                             size: int = 1, exclude_hypernyms: bool = True,
                             candidate_weight_function = None) -> List[str]:

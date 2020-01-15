@@ -23,7 +23,7 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
                  verbose: bool = False, **kwargs_hyponymy_dataloader):
 
         assert embedding_batch_size >= 2*hyponymy_batch_size, f"`embedding_batch_size` must be two times larger than `hyponymy_batch_size`."
-        available_values = ("both","hypernym","hyponym","diff",None)
+        available_values = ("both","hypernym","hyponym","diff","lca",None)
         assert entity_depth_information in available_values, f"valid values of `entity_depth_information` are: {','.join(map(str, available_values))}"
 
         self._word_embeddings_dataset = word_embeddings_dataset
@@ -125,6 +125,12 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
                     if (depth_hyper is not None) and (depth_hypo is not None):
                         depth_diff = depth_hypo - depth_hyper
                         lst_entity_depth_info.append((idx_hyper, idx_hypo, depth_diff))
+                if self._entity_depth_information == "lca":
+                    if (depth_hyper is not None) and (depth_hypo is not None):
+                        depth_lca = self._taxonomy.lowest_common_ancestor_depth(hypernym=hyponymy["hypernym"],
+                                                                                hyponym=hyponymy["hyponym"],
+                                                                                offset=1)
+                        lst_entity_depth_info.append((idx_hyper, idx_hypo, depth_lca))
 
         batch = {
             "embedding": mat_embeddings,
