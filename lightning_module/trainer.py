@@ -331,6 +331,7 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
 
     def on_epoch_start(self):
         self._update_model_parameters()
+        self.train_dataloader().dataset.shuffle_hyponymy_dataset()
 
 
 class SupervisedCodeLengthTrainer(UnsupervisedTrainer):

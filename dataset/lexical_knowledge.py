@@ -136,11 +136,17 @@ class HyponymyDataset(Dataset):
                 entry = self.transform(entry)
             yield entry
 
-    def __getitem__(self, idx: Union[int, torch.Tensor]):
+    def __getitem__(self, idx: Union[int, List[int], torch.Tensor]):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        s_entry = self._lst_samples[idx]
+        # index to entry (entries)
+        if isinstance(idx, int):
+            s_entry = self._lst_samples[idx]
+        elif isinstance(idx, list):
+            s_entry = [self._lst_samples[i] for i in idx]
+
+        # entry (entries) to instances
         if isinstance(s_entry, str):
             entry = self._preprocess(s_entry)
             if self.transform is not None:

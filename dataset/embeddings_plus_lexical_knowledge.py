@@ -4,6 +4,7 @@
 import io, os, copy
 from typing import List, Tuple, Dict, Optional, Union
 import random
+import warnings
 
 import torch
 from torch.utils.data import Dataset, DataLoader
@@ -218,6 +219,11 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         if verbose:
             self.verify_batch_sizes()
 
+        # hyponymy sample order
+        n_hyponymy = len(self._hyponymy_dataset)
+        self._sample_order = list(range(n_hyponymy))
+        self.shuffle_hyponymy_dataset()
+
     def verify_batch_sizes(self):
 
         n_embeddings = len(self._word_embeddings_dataset)
@@ -338,6 +344,9 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
         return batch
 
+    def shuffle_hyponymy_dataset(self):
+        random.shuffle(self._sample_order)
+
     def __getitem__(self, idx):
 
         while True:
@@ -345,7 +354,9 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             n_idx_max = self._hyponymy_batch_size * (idx+1)
 
             # feed hyponymy relation from the hyponymy dataset
-            batch_hyponymy_b = self._hyponymy_dataset[n_idx_min:n_idx_max]
+            idx_hyponymy = self._sample_order[n_idx_min:n_idx_max]
+            batch_hyponymy_b = self._hyponymy_dataset[idx_hyponymy]
+
             # remove hyponymy pairs which is not encodable
             batch_hyponymy = [sample for sample in batch_hyponymy_b if self.is_encodable_all(sample["hyponym"], sample["hypernym"])]
             if len(batch_hyponymy) == 0:
