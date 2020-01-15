@@ -27,6 +27,8 @@ class CodeLengthPredictionLoss(L._Loss):
             self._func_distance = self._scaled_mse
         elif distance_metric == "standardized-mse":
             self._func_distance = self._standardized_mse
+        elif distance_metric == "autoscaled-mse":
+            self._func_distance = self._auto_scaled_mse
         elif distance_metric == "batchnorm-mse":
             self._func_distance = self._batchnorm_mse
             self._m = nn.BatchNorm1d(1)
@@ -63,6 +65,23 @@ class CodeLengthPredictionLoss(L._Loss):
 
     def _standardized_mse(self, u, v) -> torch.Tensor:
         return F.mse_loss(self._standardize(u), self._standardize(v), reduction=self.reduction)
+
+    def _auto_scaled_mse(self, u, v) -> torch.Tensor:
+        # assume u and y is predicted and ground-truth values, respectively.
+        alpha = torch.sum(u*v)
+        if alpha > 0:
+            if self.reduction != "none":
+                n_batch = u.shape[0]
+                loss = torch.sum(v**2) - torch.sum(u*v)**2 / (torch.sum(u**2)+1E-6)
+                if self.reduction == "mean":
+                    loss /= n_batch
+                return loss
+            else:
+                scale = torch.sum(u*v) / torch.sum(u**2)
+                loss = F.mse_loss(scale*u, v, reduction=self.reduction)
+        else:
+            loss = self._scaled_mse(u, v)
+        return loss
 
     def _scaled_mae(self, u, v) -> torch.Tensor:
         return F.l1_loss(self._scale_dynamic(u), self._scale_dynamic(v), reduction=self.reduction)
