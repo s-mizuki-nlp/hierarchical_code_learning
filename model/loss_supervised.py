@@ -68,17 +68,10 @@ class CodeLengthPredictionLoss(L._Loss):
 
     def _auto_scaled_mse(self, u, v) -> torch.Tensor:
         # assume u and y is predicted and ground-truth values, respectively.
-        alpha = torch.sum(u*v)
-        if alpha > 0:
-            if self.reduction != "none":
-                n_batch = u.shape[0]
-                loss = torch.sum(v**2) - torch.sum(u*v)**2 / (torch.sum(u**2)+1E-6)
-                if self.reduction == "mean":
-                    loss /= n_batch
-                return loss
-            else:
-                scale = torch.sum(u*v) / torch.sum(u**2)
-                loss = F.mse_loss(scale*u, v, reduction=self.reduction)
+        # scale = torch.sum(u*v) / (torch.sum(u**2)+1E-6)
+        scale = torch.sum(u.detach()*v.detach()) / (torch.sum(u.detach()**2)+1E-6)
+        if scale > 0:
+            loss = F.mse_loss(scale*u, v, reduction=self.reduction)
         else:
             loss = self._scaled_mse(u, v)
         return loss
