@@ -10,8 +10,8 @@ from torch.nn.modules import loss as L
 
 class CodeLengthPredictionLoss(L._Loss):
 
-    def __init__(self, scale: float = 1.0, normalize_code_length: bool = True, normalize_coefficient_for_ground_truth: float = 1.0,
-                 distance_metric: str = "mse",
+    def __init__(self, scale: float = 1.0, normalize_code_length: bool = False, normalize_coefficient_for_ground_truth: float = 1.0,
+                 distance_metric: str = "scaled-mse",
                  size_average=None, reduce=None, reduction='mean'):
 
         super(CodeLengthPredictionLoss, self).__init__(size_average, reduce, reduction)
@@ -275,6 +275,41 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         t_prob_c_y = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_y)
 
         y_pred = self.calc_soft_hyponymy_score(t_prob_c_x, t_prob_c_y)
+
+        # scale ground-truth value and predicted value
+        if self._normalize_hyponymy_score:
+            # scale predicted value by the number of digits. then value range will be (-1, +1)
+            n_digits = t_prob_c_batch.shape[1]
+            y_pred /= n_digits
+            # scale ground-truth value by the user-specified value.
+            y_true *= self._normalize_coef_for_gt
+
+        loss = self._func_distance(y_pred, y_true)
+
+        return loss * self._scale
+
+
+class LowestCommonAncestorLengthPredictionLoss(HyponymyScoreLoss):
+
+    def forward(self, t_prob_c_batch: torch.Tensor, lst_hyponymy_tuple: List[Tuple[int, int, float]]) -> torch.Tensor:
+        """
+        evaluates loss of the predicted and ground-truth value of the length of the lowest common ancestor.
+
+        :param t_prob_c_batch: probability array. shape: (n_batch, n_digits, n_ary), t_prob_c_batch[b,n,m] = p(c_n=m|x_b)
+        :param lst_hyponymy_tuple: list of (hypernym index, hyponym index, length of lowest  common ancestor) tuples
+        """
+
+        # x: hypernym, y: hyponym
+        dtype, device = self._dtype_and_device(t_prob_c_batch)
+
+        t_idx_x = torch.LongTensor([tup[0] for tup in lst_hyponymy_tuple], device=device)
+        t_idx_y = torch.LongTensor([tup[1] for tup in lst_hyponymy_tuple], device=device)
+        y_true = torch.FloatTensor([tup[2] for tup in lst_hyponymy_tuple], device=device)
+
+        t_prob_c_x = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_x)
+        t_prob_c_y = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_y)
+
+        y_pred = self.calc_soft_lowest_common_ancestor_length(t_prob_c_x, t_prob_c_y)
 
         # scale ground-truth value and predicted value
         if self._normalize_hyponymy_score:
