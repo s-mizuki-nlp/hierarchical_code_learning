@@ -89,6 +89,8 @@ class SoftmaxBasedCDFEstimator(nn.Module):
                 self._init_bias_to_min()
             elif init_code_length == "max":
                 self._init_bias_to_max()
+            elif init_code_length == "random":
+                self._init_weight_and_bias_to_random()
             else:
                 raise NotImplementedError(f"unknown value was specified: {init_code_length}")
 
@@ -114,6 +116,13 @@ class SoftmaxBasedCDFEstimator(nn.Module):
         final_layer_bias = self.lst_mlp_layer[-1].bias
         dtype, device = final_layer_bias.dtype, final_layer_bias.device
         final_layer_bias.data = torch.tensor((0,)*(self._n_output_softmax-1) + (10,), dtype=dtype, device=device)
+
+    def _init_weight_and_bias_to_random(self):
+        final_layer_weight = self.lst_mlp_layer[-1].weight
+        final_layer_bias = self.lst_mlp_layer[-1].bias
+        dtype, device = final_layer_bias.dtype, final_layer_bias.device
+        final_layer_bias.data = torch.tensor((0,)*self._n_output_softmax, dtype=dtype, device=device)
+        final_layer_weight.data *= 10
 
     def forward(self, input_x: torch.Tensor) -> torch.Tensor:
 
