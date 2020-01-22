@@ -31,6 +31,7 @@ class UnsupervisedTrainer(pl.LightningModule):
                  dataloader_test: Optional[DataLoader] = None,
                  learning_rate: Optional[float] = 0.001,
                  model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
+                 loss_scale_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
                  ):
 
         super(UnsupervisedTrainer, self).__init__()
@@ -57,6 +58,11 @@ class UnsupervisedTrainer(pl.LightningModule):
             self._model_parameter_schedulers = {}
         else:
             self._model_parameter_schedulers = model_parameter_schedulers
+
+        if loss_scale_schedulers is None:
+            self._loss_scale_schedulers = {}
+        else:
+            self._loss_scale_schedulers = loss_scale_schedulers
 
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).to(self._device)
@@ -188,8 +194,27 @@ class UnsupervisedTrainer(pl.LightningModule):
                 # DEBUG
                 print(f"{parameter_name}: {current_value:.2f} -> {new_value:.2f}")
 
+    def _update_loss_scales(self, current_step: Optional[float] = None):
+        if current_step is None:
+            current_step = self.current_epoch / self.trainer.max_nb_epochs
+
+        for loss_name, scheduler_function in self._loss_scale_schedulers.items():
+            if scheduler_function is None:
+                continue
+
+            loss_layer = getattr(self, loss_name, None)
+            if (loss_layer is not None) and hasattr(loss_layer, "scale"):
+                current_value = loss_layer.scale
+                new_value = scheduler_function(current_step)
+                loss_layer.scale = new_value
+
+                # DEBUG
+                print(f"{loss_name}: {current_value:.2f} -> {new_value:.2f}")
+
+
     def on_epoch_start(self):
         self._update_model_parameters()
+        self._update_loss_scales()
 
 
 class SupervisedTrainer(UnsupervisedTrainer):
@@ -207,10 +232,11 @@ class SupervisedTrainer(UnsupervisedTrainer):
                  learning_rate: Optional[float] = 0.001,
                  use_intermediate_representation: bool = False,
                  model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
+                 loss_scale_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
                  ):
 
         super().__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate,
-                         model_parameter_schedulers)
+                         model_parameter_schedulers, loss_scale_schedulers)
 
         self._use_intermediate_representation = use_intermediate_representation
         self._loss_hyponymy = loss_hyponymy
