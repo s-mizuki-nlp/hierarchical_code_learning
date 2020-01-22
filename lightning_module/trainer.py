@@ -30,7 +30,6 @@ class UnsupervisedTrainer(pl.LightningModule):
                  dataloader_val: Optional[DataLoader] = None,
                  dataloader_test: Optional[DataLoader] = None,
                  learning_rate: Optional[float] = 0.001,
-                 use_intermediate_representation: bool = False,
                  model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
                  ):
 
@@ -39,7 +38,6 @@ class UnsupervisedTrainer(pl.LightningModule):
         self._scale_loss_reconst = loss_reconst.scale
         self._scale_loss_mi = loss_mutual_info.scale if loss_mutual_info is not None else 1.
 
-        self._use_intermediate_representation = use_intermediate_representation
         self._model = model
         self._encoder = model._encoder
         self._decoder = model._decoder
@@ -212,8 +210,9 @@ class SupervisedTrainer(UnsupervisedTrainer):
                  ):
 
         super().__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate,
-                         use_intermediate_representation, model_parameter_schedulers)
+                         model_parameter_schedulers)
 
+        self._use_intermediate_representation = use_intermediate_representation
         self._loss_hyponymy = loss_hyponymy
         self._loss_non_hyponymy = loss_non_hyponymy
         self._loss_code_length = loss_code_length
