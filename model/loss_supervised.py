@@ -48,6 +48,10 @@ class CodeLengthPredictionLoss(L._Loss):
     def scale(self):
         return self._scale
 
+    @scale.setter
+    def scale(self, value):
+        self._scale = value
+
     def _standardize(self, vec: torch.Tensor, dim=-1):
         means = vec.mean(dim=dim, keepdim=True)
         stds = vec.std(dim=dim, keepdim=True)

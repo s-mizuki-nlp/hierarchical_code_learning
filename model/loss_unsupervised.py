@@ -28,6 +28,10 @@ class ReconstructionLoss(L._Loss):
     def scale(self):
         return self._scale
 
+    @scale.setter
+    def scale(self, value):
+        self._scale = value
+
 ### unsupervised loss classes ###
 class MutualInformationLoss(L._Loss):
 
@@ -84,6 +88,9 @@ class MutualInformationLoss(L._Loss):
     def scale(self):
         return self._scale
 
+    @scale.setter
+    def scale(self, value):
+        self._scale = value
 
 class OriginalMutualInformationLoss(MutualInformationLoss):
 
