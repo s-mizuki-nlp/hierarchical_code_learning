@@ -99,11 +99,11 @@ class UnsupervisedTrainer(pl.LightningModule):
         loss = loss_reconst + loss_mi
 
         dict_losses = {
-            "loss_reconst": loss_reconst,
-            "loss_mutual_info": loss_mi,
-            "loss": loss
+            "train_loss_reconst": loss_reconst / self._scale_loss_reconst,
+            "train_loss_mutual_info": loss_mi / self._scale_loss_mi,
+            "train_loss": loss
         }
-        return dict_losses
+        return {"loss":loss, "log": dict_losses}
 
     def _evaluate_code_stats(self, t_code_prob):
 
@@ -118,7 +118,6 @@ class UnsupervisedTrainer(pl.LightningModule):
             "val_code_probability_divergence":torch.mean(code_probability_divergence)
         }
         return metrics
-
 
     def validation_step(self, data_batch, batch_nb):
 
@@ -135,8 +134,8 @@ class UnsupervisedTrainer(pl.LightningModule):
         loss = loss_reconst + loss_mi
 
         metrics = {
-            "val_loss_reconst": loss_reconst,
-            "val_mutual_info": loss_mi,
+            "val_loss_reconst": loss_reconst / self._scale_loss_reconst,
+            "val_mutual_info": loss_mi / self._scale_loss_mi,
             "val_loss": loss
         }
         # if self._loss_mutual_info is not None:
@@ -193,7 +192,6 @@ class UnsupervisedTrainer(pl.LightningModule):
 
     def on_epoch_start(self):
         self._update_model_parameters()
-
 
 
 class SupervisedTrainer(UnsupervisedTrainer):
