@@ -5,18 +5,17 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
-from typing import Optional, Dict, Tuple, Union, Callable
+from typing import Optional, Dict, Callable
 from collections import defaultdict
 import pickle
 import numpy as np
 import torch
-from torch import nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from torch.nn.modules.loss import _Loss
 from torch.optim import Adam
 import pytorch_lightning as pl
 
-from model.autoencoder import AutoEncoder, MaskedAutoEncoder
+from model.autoencoder import MaskedAutoEncoder
 from model.loss_unsupervised import ReconstructionLoss
 from model.loss_supervised import HyponymyScoreLoss, CodeLengthPredictionLoss
 
@@ -24,17 +23,23 @@ from model.loss_supervised import HyponymyScoreLoss, CodeLengthPredictionLoss
 class UnsupervisedTrainer(pl.LightningModule):
 
     def __init__(self,
-                 model: AutoEncoder,
+                 model: MaskedAutoEncoder,
                  loss_reconst: _Loss,
                  loss_mutual_info: Optional[_Loss] = None,
                  dataloader_train: Optional[DataLoader] = None,
                  dataloader_val: Optional[DataLoader] = None,
                  dataloader_test: Optional[DataLoader] = None,
-                 learning_rate: Optional[float] = 0.001
+                 learning_rate: Optional[float] = 0.001,
+                 use_intermediate_representation: bool = False,
+                 model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
                  ):
 
         super(UnsupervisedTrainer, self).__init__()
 
+        self._scale_loss_reconst = loss_reconst.scale
+        self._scale_loss_mi = loss_mutual_info.scale if loss_mutual_info is not None else 1.
+
+        self._use_intermediate_representation = use_intermediate_representation
         self._model = model
         self._encoder = model._encoder
         self._decoder = model._decoder
@@ -48,6 +53,12 @@ class UnsupervisedTrainer(pl.LightningModule):
         }
         # auxiliary function that is solely used for validation
         self._auxiliary = HyponymyScoreLoss()
+
+        # set model parameter scheduler
+        if model_parameter_schedulers is None:
+            self._model_parameter_schedulers = {}
+        else:
+            self._model_parameter_schedulers = model_parameter_schedulers
 
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).to(self._device)
@@ -77,6 +88,7 @@ class UnsupervisedTrainer(pl.LightningModule):
         t_x = data_batch["embedding"]
         t_latent_code, t_code_prob, t_x_dash = self._model.forward(t_x)
 
+        # (required) reconstruction loss
         loss_reconst = self._loss_reconst.forward(t_x_dash, t_x)
 
         if self._loss_mutual_info is not None:
@@ -163,8 +175,28 @@ class UnsupervisedTrainer(pl.LightningModule):
 
         return model
 
+    def _update_model_parameters(self, current_step: Optional[float] = None):
+        if current_step is None:
+            current_step = self.current_epoch / self.trainer.max_nb_epochs
 
-class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
+        for parameter_name, scheduler_function in self._model_parameter_schedulers.items():
+            if scheduler_function is None:
+                continue
+
+            current_value = getattr(self._model, parameter_name, None)
+            if current_value is not None:
+                new_value = scheduler_function(current_step)
+                setattr(self._model, parameter_name, new_value)
+
+                # DEBUG
+                print(f"{parameter_name}: {current_value:.2f} -> {new_value:.2f}")
+
+    def on_epoch_start(self):
+        self._update_model_parameters()
+
+
+
+class SupervisedTrainer(UnsupervisedTrainer):
 
     def __init__(self,
                  model: MaskedAutoEncoder,
@@ -177,27 +209,20 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
                  dataloader_val: Optional[DataLoader] = None,
                  dataloader_test: Optional[DataLoader] = None,
                  learning_rate: Optional[float] = 0.001,
-                 use_intermediate_repr_for_hyponymy_score: bool = False,
+                 use_intermediate_representation: bool = False,
                  model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
                  ):
 
-        super().__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate)
+        super().__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate,
+                         use_intermediate_representation, model_parameter_schedulers)
 
         self._loss_hyponymy = loss_hyponymy
         self._loss_non_hyponymy = loss_non_hyponymy
         self._loss_code_length = loss_code_length
-        self._use_intermediate_repr_for_hyponymy_score = use_intermediate_repr_for_hyponymy_score
 
-        self._scale_loss_reconst = loss_reconst.scale
-        self._scale_loss_mi = loss_mutual_info.scale if loss_mutual_info is not None else 1.
         self._scale_loss_hyponymy = loss_hyponymy.scale
         self._scale_loss_non_hyponymy = loss_non_hyponymy.scale if loss_non_hyponymy is not None else 1.
         self._scale_loss_code_length = loss_code_length.scale if loss_code_length is not None else 1.
-
-        if model_parameter_schedulers is None:
-            self._model_parameter_schedulers = {}
-        else:
-            self._model_parameter_schedulers = model_parameter_schedulers
 
     def training_step(self, data_batch, batch_nb):
 
@@ -209,7 +234,7 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         loss_reconst = self._loss_reconst(t_x_dash, t_x)
 
         # hyponymy relation related loss
-        if self._use_intermediate_repr_for_hyponymy_score:
+        if self._use_intermediate_representation:
             code_repr = t_latent_code
         else:
             code_repr = t_code_prob
@@ -260,7 +285,7 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
         loss_reconst = self._loss_reconst(t_x_dash, t_x)
 
         # hyponymy relation related loss
-        if self._use_intermediate_repr_for_hyponymy_score:
+        if self._use_intermediate_representation:
             code_repr = t_latent_code
         else:
             code_repr = t_code_prob
@@ -313,26 +338,6 @@ class SupervisedHypernymyRelationTrainer(UnsupervisedTrainer):
 
         return {"val_loss":loss, "log":metrics}
 
-    def _update_model_parameters(self, current_step: Optional[float] = None):
-        if current_step is None:
-            current_step = self.current_epoch / self.trainer.max_nb_epochs
-
-        for parameter_name, scheduler_function in self._model_parameter_schedulers.items():
-            if scheduler_function is None:
-                continue
-
-            current_value = getattr(self._model, parameter_name, None)
-            if current_value is not None:
-                new_value = scheduler_function(current_step)
-                setattr(self._model, parameter_name, new_value)
-
-                # DEBUG
-                print(f"{parameter_name}: {current_value:.2f} -> {new_value:.2f}")
-
     def on_epoch_start(self):
         self._update_model_parameters()
         self.train_dataloader().dataset.shuffle_hyponymy_dataset()
-
-
-class SupervisedCodeLengthTrainer(UnsupervisedTrainer):
-    pass
