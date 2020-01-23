@@ -98,15 +98,16 @@ class StepScheduler(BaseScheduler):
 
 class PeriodicScheduler(BaseScheduler):
 
-    def __init__(self, off: float, on: float, on_interval: int, **kwargs):
+    def __init__(self, off: float, on: float, on_interval: int, offset: int = 0, **kwargs):
         super().__init__(0, 0, 0, **kwargs)
         self._off = off
         self._on = on
         self._on_interval = on_interval
+        self._offset = offset
 
     def _eval(self, x:float, i:int = None) -> float:
         assert i is not None, f"you must specify `i` argument with this scheduler."
-        if i % self._on_interval == 0:
+        if (i + self._offset) % self._on_interval == 0:
             y = self._on
         else:
             y = self._off
