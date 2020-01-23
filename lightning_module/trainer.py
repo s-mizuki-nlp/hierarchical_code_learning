@@ -201,6 +201,8 @@ class UnsupervisedTrainer(pl.LightningModule):
         for loss_name, scheduler_function in self._loss_scale_schedulers.items():
             if scheduler_function is None:
                 continue
+            if not loss_name.startswith("_"):
+                loss_name = "_" + loss_name
 
             loss_layer = getattr(self, loss_name, None)
             if (loss_layer is not None) and hasattr(loss_layer, "scale"):
@@ -282,15 +284,15 @@ class SupervisedTrainer(UnsupervisedTrainer):
 
         # (optional) mutual information loss
         if self._loss_mutual_info is not None:
-            loss_mi = self._loss_mutual_info(t_code_prob)
+            loss_mutual_info = self._loss_mutual_info(t_code_prob)
         else:
-            loss_mi = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
+            loss_mutual_info = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
 
-        loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_code_length + loss_mi
+        loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_code_length + loss_mutual_info
 
         dict_losses = {
             "train_loss_reconst": loss_reconst,
-            "train_loss_mutual_info": loss_mi / self._scale_loss_mi,
+            "train_loss_mutual_info": loss_mutual_info / self._scale_loss_mi,
             "train_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
             "train_loss_non_hyponymy": loss_non_hyponymy / self._scale_loss_non_hyponymy,
             "train_loss_code_length": loss_code_length / self._scale_loss_code_length,
@@ -363,4 +365,5 @@ class SupervisedTrainer(UnsupervisedTrainer):
 
     def on_epoch_start(self):
         self._update_model_parameters()
+        self._update_loss_scales()
         self.train_dataloader().dataset.shuffle_hyponymy_dataset()
