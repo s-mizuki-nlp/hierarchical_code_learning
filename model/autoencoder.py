@@ -183,7 +183,7 @@ class MaskedAutoEncoder(AutoEncoder):
                 t_latent_code = self._discretizer(t_code_prob)
             else:
                 t_latent_code = t_code_prob
-            t_decoder_input = t_latent_code * self._mask
+            t_decoder_input = t_latent_code * self._mask.to(device=t_x.device)
 
             # decoder
             t_x_dash = self._decoder.forward(t_decoder_input)
