@@ -131,8 +131,8 @@ class CodeLengthPredictionLoss(L._Loss):
         # x: hypernym, y: hyponym
         dtype, device = self._dtype_and_device(t_prob_c_batch)
 
-        t_idx = torch.LongTensor([tup[0] for tup in lst_code_length_tuple], device=device)
-        y_true = torch.FloatTensor([tup[1] for tup in lst_code_length_tuple], device=device)
+        t_idx = torch.tensor([tup[0] for tup in lst_code_length_tuple], dtype=torch.int, device=device)
+        y_true = torch.tensor([tup[1] for tup in lst_code_length_tuple], dtype=dtype, device=device)
 
         # t_prob_c_batch: (N_b, N_digits, N_ary); t_prob_c_batch[b,n,m] = p(c_n=m|x_b)
         t_prob_c = torch.index_select(t_prob_c_batch, dim=0, index=t_idx)
@@ -161,9 +161,9 @@ class CodeLengthDiffPredictionLoss(CodeLengthPredictionLoss):
         # x: hypernym, y: hyponym
         dtype, device = self._dtype_and_device(t_prob_c_batch)
 
-        t_idx_x = torch.LongTensor([tup[0] for tup in lst_code_length_diff_tuple], device=device)
-        t_idx_y = torch.LongTensor([tup[1] for tup in lst_code_length_diff_tuple], device=device)
-        y_true = torch.FloatTensor([tup[2] for tup in lst_code_length_diff_tuple], device=device)
+        t_idx_x = torch.tensor([tup[0] for tup in lst_code_length_diff_tuple], dtype=torch.int, device=device)
+        t_idx_y = torch.tensor([tup[1] for tup in lst_code_length_diff_tuple], dtype=torch.int, device=device)
+        y_true = torch.tensor([tup[2] for tup in lst_code_length_diff_tuple], dtype=dtype, device=device)
 
         # compute diff of code length
         t_code_length = self.calc_soft_code_length(t_prob_c=t_prob_c_batch)
@@ -271,9 +271,9 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         # x: hypernym, y: hyponym
         dtype, device = self._dtype_and_device(t_prob_c_batch)
 
-        t_idx_x = torch.LongTensor([tup[0] for tup in lst_hyponymy_tuple], device=device)
-        t_idx_y = torch.LongTensor([tup[1] for tup in lst_hyponymy_tuple], device=device)
-        y_true = torch.FloatTensor([tup[2] for tup in lst_hyponymy_tuple], device=device)
+        t_idx_x = torch.tensor([tup[0] for tup in lst_hyponymy_tuple], dtype=torch.int, device=device)
+        t_idx_y = torch.tensor([tup[1] for tup in lst_hyponymy_tuple], dtype=torch.int, device=device)
+        y_true = torch.tensor([tup[2] for tup in lst_hyponymy_tuple], dtype=dtype, device=device)
 
         t_prob_c_x = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_x)
         t_prob_c_y = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_y)
@@ -306,9 +306,9 @@ class LowestCommonAncestorLengthPredictionLoss(HyponymyScoreLoss):
         # x: hypernym, y: hyponym
         dtype, device = self._dtype_and_device(t_prob_c_batch)
 
-        t_idx_x = torch.LongTensor([tup[0] for tup in lst_hyponymy_tuple], device=device)
-        t_idx_y = torch.LongTensor([tup[1] for tup in lst_hyponymy_tuple], device=device)
-        y_true = torch.FloatTensor([tup[2] for tup in lst_hyponymy_tuple], device=device)
+        t_idx_x = torch.tensor([tup[0] for tup in lst_hyponymy_tuple], dtype=torch.int, device=device)
+        t_idx_y = torch.tensor([tup[1] for tup in lst_hyponymy_tuple], dtype=torch.int, device=device)
+        y_true = torch.tensor([tup[2] for tup in lst_hyponymy_tuple], dtype=dtype, device=device)
 
         t_prob_c_x = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_x)
         t_prob_c_y = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_y)
