@@ -122,7 +122,7 @@ class SoftmaxBasedCDFEstimator(nn.Module):
         final_layer_bias = self.lst_mlp_layer[-1].bias
         dtype, device = final_layer_bias.dtype, final_layer_bias.device
         final_layer_bias.data = torch.tensor((0,)*self._n_output_softmax, dtype=dtype, device=device)
-        final_layer_weight.data *= 10
+        final_layer_weight.data *= 10 * np.sqrt(self._n_output_softmax)
 
     def forward(self, input_x: torch.Tensor) -> torch.Tensor:
 
