@@ -38,7 +38,7 @@ class BaseScheduler(object, metaclass=ABCMeta):
 
     def __call__(self, step):
         x = max(0.0, min(1.0, step*self._step_boost))
-        return self._eval(x)
+        return self._eval(x=x, i=step)
 
 
 class LinearScheduler(BaseScheduler):
