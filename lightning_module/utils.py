@@ -27,9 +27,10 @@ class BaseScheduler(object, metaclass=ABCMeta):
         return self._end
 
     @abstractmethod
-    def _eval(self, x: float) -> float:
+    def _eval(self, x: float, i: int = None) -> float:
         """
         returns scheduled value. when x=0, then y=start. similarly, when x=1, then y=stop.
+        i is the auxiliary input which represents the number of epochs. you can use it if necessary.
 
         @param x: progress value. x \in [0,1].
         @return: y
@@ -42,7 +43,7 @@ class BaseScheduler(object, metaclass=ABCMeta):
 
 class LinearScheduler(BaseScheduler):
 
-    def _eval(self, x: float) -> float:
+    def _eval(self, x: float, i: int = None) -> float:
         c = self._end - self._begin
         b = self._begin
         y = c*x + b
@@ -58,7 +59,7 @@ class ExponentialScheduler(BaseScheduler):
         assert (begin > 0) and (end > 0), f"both `begin` and `end` must be positive."
 
 
-    def _eval(self, x: float) -> float:
+    def _eval(self, x: float, i: int = None) -> float:
         c = np.log(self._end) - np.log(self._begin)
         d = self._begin
         y = d*np.exp(c*x)
@@ -75,7 +76,7 @@ class SigmoidScheduler(BaseScheduler):
     def _sigmoid(self, u: float):
         return 1./(1. + np.exp(-u))
 
-    def _eval(self, x: float) -> float:
+    def _eval(self, x: float, i: int = None) -> float:
         s = self._sigmoid(self._coef_gamma*(x - 0.5))
         c = self._end - self._begin
         b = self._begin
@@ -83,3 +84,30 @@ class SigmoidScheduler(BaseScheduler):
         return y
 
 
+class StepScheduler(BaseScheduler):
+
+    def __init__(self, begin: float, end: float, step_boost: float = 1.0, threshold: float = 0.5, **kwargs):
+
+        super().__init__(begin, end, step_boost, **kwargs)
+        self._threshold = threshold
+
+    def _eval(self, x: float, i: int = None) -> float:
+        y = self._begin if x < self._threshold else self._end
+        return y
+
+
+class PeriodicScheduler(BaseScheduler):
+
+    def __init__(self, off: float, on: float, on_interval: int, **kwargs):
+        super().__init__(0, 0, 0, **kwargs)
+        self._off = off
+        self._on = on
+        self._on_interval = on_interval
+
+    def _eval(self, x:float, i:int = None) -> float:
+        assert i is not None, f"you must specify `i` argument with this scheduler."
+        if i % self._on_interval == 0:
+            y = self._on
+        else:
+            y = self._off
+        return y

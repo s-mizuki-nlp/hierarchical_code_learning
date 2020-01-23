@@ -188,7 +188,7 @@ class UnsupervisedTrainer(pl.LightningModule):
 
             current_value = getattr(self._model, parameter_name, None)
             if current_value is not None:
-                new_value = scheduler_function(current_step)
+                new_value = scheduler_function(current_step, self.current_epoch)
                 setattr(self._model, parameter_name, new_value)
 
                 # DEBUG
@@ -205,7 +205,7 @@ class UnsupervisedTrainer(pl.LightningModule):
             loss_layer = getattr(self, loss_name, None)
             if (loss_layer is not None) and hasattr(loss_layer, "scale"):
                 current_value = loss_layer.scale
-                new_value = scheduler_function(current_step)
+                new_value = scheduler_function(current_step, self.current_epoch)
                 loss_layer.scale = new_value
 
                 # DEBUG
