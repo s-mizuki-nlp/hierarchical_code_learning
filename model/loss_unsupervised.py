@@ -68,7 +68,7 @@ class MutualInformationLoss(L._Loss):
 
         # t_prob_c_zero: (N_b, N_digits); t_prob_c_zero[b,n] = {p(c_n=0|x_b)}
         # t_prob_c_zero_mean: (N_digits,)
-        t_prob_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0)).squeeze()
+        t_prob_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0, device=t_prob_c.device)).squeeze()
         t_prob_c_zero_mean = torch.mean(t_prob_c_zero, dim=0, keepdim=False)
 
         # total_entropy: (N_digits,)

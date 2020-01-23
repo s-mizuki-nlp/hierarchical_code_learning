@@ -110,7 +110,7 @@ class CodeLengthPredictionLoss(L._Loss):
         return t_prob
 
     def calc_soft_code_length(self, t_prob_c: torch.Tensor):
-        t_p_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0)).squeeze()
+        t_p_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0, device=t_prob_c.device)).squeeze()
         n_digits = t_p_c_zero.shape[-1]
         dtype, device = self._dtype_and_device(t_prob_c)
 
@@ -202,8 +202,9 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         # x: hypernym, y: hyponym
 
         # t_p_c_*_zero: (n_batch, n_digits)
-        t_p_c_x_zero = torch.index_select(t_prob_c_x, dim=-1, index=torch.tensor(0)).squeeze()
-        t_p_c_y_zero = torch.index_select(t_prob_c_y, dim=-1, index=torch.tensor(0)).squeeze()
+        idx_zero = torch.tensor(0, device=t_prob_c_x.device)
+        t_p_c_x_zero = torch.index_select(t_prob_c_x, dim=-1, index=idx_zero).squeeze()
+        t_p_c_y_zero = torch.index_select(t_prob_c_y, dim=-1, index=idx_zero).squeeze()
 
         ret = 1.0 - (torch.sum(t_prob_c_x * t_prob_c_y, dim=-1) - t_p_c_x_zero * t_p_c_y_zero)
         return ret
@@ -213,8 +214,9 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         dtype, device = self._dtype_and_device(t_prob_c_x)
 
         # t_p_c_*_zero: (n_batch, n_digits)
-        t_p_c_x_zero = torch.index_select(t_prob_c_x, dim=-1, index=torch.tensor(0)).squeeze()
-        t_p_c_y_zero = torch.index_select(t_prob_c_y, dim=-1, index=torch.tensor(0)).squeeze()
+        idx_zero = torch.tensor(0, device=t_prob_c_x.device)
+        t_p_c_x_zero = torch.index_select(t_prob_c_x, dim=-1, index=idx_zero).squeeze()
+        t_p_c_y_zero = torch.index_select(t_prob_c_y, dim=-1, index=idx_zero).squeeze()
         # t_beta: (n_batch, n_digits)
         t_beta = t_p_c_x_zero*(1.- t_p_c_y_zero)
 

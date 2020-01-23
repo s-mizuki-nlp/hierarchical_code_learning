@@ -98,7 +98,7 @@ class UnsupervisedTrainer(pl.LightningModule):
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
         else:
-            loss_mi = torch.tensor(0.0, dtype=torch.float32)
+            loss_mi = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
 
         loss = loss_reconst + loss_mi
 
@@ -133,7 +133,7 @@ class UnsupervisedTrainer(pl.LightningModule):
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
         else:
-            loss_mi = torch.tensor(0.0, dtype=torch.float32)
+            loss_mi = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
 
         loss = loss_reconst + loss_mi
 
@@ -271,20 +271,20 @@ class SupervisedTrainer(UnsupervisedTrainer):
             lst_tup_non_hyponymy = data_batch["non_hyponymy_relation"]
             loss_non_hyponymy = self._loss_non_hyponymy(code_repr, lst_tup_non_hyponymy)
         else:
-            loss_non_hyponymy = torch.tensor(0.0, dtype=torch.float32)
+            loss_non_hyponymy = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
 
         # (optional) code length loss
         if self._loss_code_length is not None:
             lst_tup_entity_depth = data_batch["entity_depth"]
             loss_code_length = self._loss_code_length(code_repr, lst_tup_entity_depth)
         else:
-            loss_code_length = torch.tensor(0.0, dtype=torch.float32)
+            loss_code_length = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
 
         # (optional) mutual information loss
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
         else:
-            loss_mi = torch.tensor(0.0, dtype=torch.float32)
+            loss_mi = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
 
         loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_code_length + loss_mi
 
@@ -322,7 +322,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
             lst_tup_non_hyponymy = data_batch["non_hyponymy_relation"]
             loss_non_hyponymy = self._loss_non_hyponymy(code_repr, lst_tup_non_hyponymy)
         else:
-            loss_non_hyponymy = torch.tensor(0.0, dtype=torch.float32)
+            loss_non_hyponymy = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
             cache = self._loss_hyponymy.reduction
             self._loss_hyponymy.reduction = "none"
             lst_loss_hyponymy = self._loss_hyponymy(code_repr, lst_tup_hyponymy)
@@ -338,13 +338,13 @@ class SupervisedTrainer(UnsupervisedTrainer):
             lst_tup_entity_depth = data_batch["entity_depth"]
             loss_code_length = self._loss_code_length(code_repr, lst_tup_entity_depth)
         else:
-            loss_code_length = torch.tensor(0.0, dtype=torch.float32)
+            loss_code_length = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
 
         # (optional) mutual information loss
         if self._loss_mutual_info is not None:
             loss_mi = self._loss_mutual_info(t_code_prob)
         else:
-            loss_mi = torch.tensor(0.0, dtype=torch.float32)
+            loss_mi = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
 
         loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_code_length + loss_mi
 
