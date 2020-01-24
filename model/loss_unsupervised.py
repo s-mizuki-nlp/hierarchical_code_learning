@@ -94,7 +94,7 @@ class MutualInformationLoss(L._Loss):
 
 class OriginalMutualInformationLoss(MutualInformationLoss):
 
-    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='elementwise_mean'):
+    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='elementwise_mean', digit_weight_power: float = 0.0):
         """
         mutual information loss. it calculates the negative mutual information multiplied by the specified scale coefficient.
         warning: it always apply a samplewise (=in-batch) mean. you can only choose elementwise mean or sum.
@@ -106,6 +106,12 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
         :param reduction:
         """
         super().__init__(scale, size_average, reduce, reduction)
+        self._digit_weight_power = digit_weight_power
+
+    def _calc_digit_weights(self, n_digits: int, dtype) -> torch.Tensor:
+        t_w = torch.pow(torch.arange(1, n_digits+1, dtype=dtype), self._digit_weight_power)
+        t_w = t_w / torch.sum(t_w)
+        return t_w
 
     def entropy(self, probs: torch.Tensor) -> torch.Tensor:
         """
@@ -131,9 +137,13 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
         # conditional_entropy: (N_digits,)
         conditional_entropy = torch.mean(self.entropy(t_prob_c), dim=0)
 
-        if self.reduction in ("elementwise_mean", "mean"):
-            mutual_info = torch.mean(total_entropy - conditional_entropy)
-        elif self.reduction == "sum":
-            mutual_info = torch.sum(total_entropy - conditional_entropy)
+        # weight for each digit: (N_digits,)
+        # weight is scaled; sum(weight) = 1
+        n_digits, dtype = t_prob_c.shape[1], t_prob_c.dtype
+        weight = self._calc_digit_weights(n_digits=n_digits, dtype=dtype)
+
+        mutual_info = torch.sum(weight*(total_entropy - conditional_entropy))
+        if self.reduction == "sum":
+            mutual_info = mutual_info * n_digits
 
         return - self._scale * mutual_info
