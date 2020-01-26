@@ -7,7 +7,7 @@ import random
 import warnings
 
 import torch
-from torch.utils.data import Dataset, DataLoader, Subset
+from torch.utils.data import Dataset, DataLoader
 import numpy as np
 
 from .word_embeddings import AbstractWordEmbeddingsDataset
@@ -42,13 +42,9 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
             self.verify_batch_sizes()
 
         # build the taxonomy from hyponymy relation. it only uses direct hyponymy pairs.
-        if hasattr(hyponymy_dataset, "dataset"):
-            original_dataset = hyponymy_dataset.dataset
-        else:
-            original_dataset = hyponymy_dataset
-        if isinstance(original_dataset, WordNetHyponymyDataset):
+        if isinstance(hyponymy_dataset, WordNetHyponymyDataset):
             self._taxonomy = WordNetTaxonomy(hyponymy_dataset=hyponymy_dataset)
-        elif isinstance(original_dataset, HyponymyDataset):
+        elif isinstance(hyponymy_dataset, HyponymyDataset):
             self._taxonomy = BasicTaxonomy(hyponymy_dataset=hyponymy_dataset)
         else:
             raise NotImplementedError(f"unsupported hyponymy dataset type: {type(hyponymy_dataset)}")
