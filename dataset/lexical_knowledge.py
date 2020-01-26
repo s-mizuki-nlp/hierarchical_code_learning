@@ -16,7 +16,7 @@ class HyponymyDataset(Dataset):
     def __init__(self, path: str, header: bool, delimiter: str, columns: Dict[str, Union[int, slice]],
                  lowercase: bool = False,
                  replace_whitespace_with_underscore: bool = False,
-                 description: str = "", transform=None):
+                 description: str = "", transform=None, n_sample_max=None):
 
         super().__init__()
         self.path = path
@@ -30,6 +30,8 @@ class HyponymyDataset(Dataset):
         self.description = description
         self.transform = transform
         self._lst_samples = self._text_loader(path, header)
+        if n_sample_max is not None:
+            self._lst_samples = self._lst_samples[:n_sample_max]
 
     def _text_loader(self, path: str, header: bool):
         with io.open(path, mode="r") as ifs:
