@@ -92,6 +92,18 @@ class BasicTaxonomy(object):
     def descendents(self, entity):
         return self.hyponyms(entity) | {entity}
 
+    @lru_cache(maxsize=10000)
+    def co_hyponyms(self, entity):
+        graph = self.dag
+        if entity not in graph:
+            return {}
+        direct_root_nodes = nx.ancestors(graph, entity) & self._find_root_nodes(graph)
+        branches = map(lambda entity: nx.descendants(self.dag, entity), direct_root_nodes)
+        branches = set().union(*branches)
+        co_hyponyms = branches - self.ancestors_and_descendents(entity)
+        return co_hyponyms
+
+    @lru_cache(maxsize=10000)
     def depth(self, entity, offset=1, not_exists=None):
         graph = self.dag
 
