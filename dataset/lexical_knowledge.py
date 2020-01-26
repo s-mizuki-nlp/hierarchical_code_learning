@@ -6,7 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os, sys, io
-from typing import Dict, List, Union, Callable, Optional, Any
+from typing import Dict, List, Union, Callable, Optional, Any, Iterable
 import torch
 from torch.utils.data import Dataset
 
@@ -16,7 +16,7 @@ class HyponymyDataset(Dataset):
     def __init__(self, path: str, header: bool, delimiter: str, columns: Dict[str, Union[int, slice]],
                  lowercase: bool = False,
                  replace_whitespace_with_underscore: bool = False,
-                 description: str = "", transform=None, n_sample_max=None):
+                 description: str = "", transform=None):
 
         super().__init__()
         self.path = path
@@ -30,8 +30,6 @@ class HyponymyDataset(Dataset):
         self.description = description
         self.transform = transform
         self._lst_samples = self._text_loader(path, header)
-        if n_sample_max is not None:
-            self._lst_samples = self._lst_samples[:n_sample_max]
 
     def _text_loader(self, path: str, header: bool):
         with io.open(path, mode="r") as ifs:
@@ -171,6 +169,8 @@ class HyponymyDataset(Dataset):
         }
         return ret
 
+    def subset(self, indices: Iterable[int]):
+        self._lst_samples = [self._lst_samples[idx] for idx in indices]
 
 class WordNetHyponymyDataset(HyponymyDataset):
     pass
