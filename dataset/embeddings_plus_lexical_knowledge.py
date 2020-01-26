@@ -187,7 +187,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                  embedding_batch_size: int, hyponymy_batch_size: int, non_hyponymy_batch_size: Optional[int] = None,
                  non_hyponymy_weighted_sampling: bool = False,
                  non_hyponymy_relation_distance: Optional[float] = None,
-                 non_hyponymy_relation_target: str = "hyponym",
+                 non_hyponymy_relation_target: Union[str, List[str]] = ["hyponym","hypernym"],
                  exclude_reverse_hyponymy_from_non_hyponymy_relation: bool = True,
                  swap_hyponymy_relations: bool = False,
                  limit_hyponym_candidates_within_minibatch: bool = True,
@@ -205,8 +205,11 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             assert embedding_batch_size >= 2*hyponymy_batch_size + non_hyponymy_batch_size, \
             f"`embedding_batch_size` must be larger than `2*hyponymy_batch_size + non_hyponymy_batch_size`."
 
-        available_options = "hyponym,hypernym,both"
-        assert non_hyponymy_relation_target in available_options.split(","), f"`non_hyponymy_relation_target` must be one of these: {available_options}"
+        available_options = ("hyponym","hypernym")
+        if isinstance(non_hyponymy_relation_target, str):
+            non_hyponymy_relation_target = non_hyponymy_relation_target.split(",")
+        for target in non_hyponymy_relation_target:
+            assert target in available_options, f"`non_hyponymy_relation_target` accepts: {','.join(available_options)}"
 
         self._non_hyponymy_batch_size = hyponymy_batch_size if non_hyponymy_batch_size is None else non_hyponymy_batch_size
         self._non_hyponymy_multiple = non_hyponymy_batch_size // hyponymy_batch_size
@@ -219,8 +222,10 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         self._split_hyponymy_and_non_hyponymy = split_hyponymy_and_non_hyponymy
         self._verbose = verbose
 
-        if non_hyponymy_relation_target == "both":
-            assert self._non_hyponymy_multiple % 2 == 0, f"if `non_hyponymy_relation_target=both`, `non_hyponymy_batch_size` must be an even multiple of the `hyponymy_batch_size`"
+        if len(non_hyponymy_relation_target) > 1:
+            n_mod = len(non_hyponymy_relation_target)
+            assert self._non_hyponymy_multiple % n_mod == 0, \
+                f"When you specify multiple `non_hyponymy_relation_target`, `non_hyponymy_batch_size` must be a multiple of the `hyponymy_batch_size`"
 
         if verbose:
             self.verify_batch_sizes()
@@ -279,12 +284,12 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             hypo = hyponymy["hyponym"]
             lst_tup_sample_b = []
             if isinstance(self._taxonomy, BasicTaxonomy):
-                if self._non_hyponymy_relation_target in ("hyponym","both"):
+                if "hyponym" in self._non_hyponymy_relation_target:
                     lst_tup_sample_b_swap_hypo = self._taxonomy.sample_random_hyponyms(entity=hyper, candidates=set_candidates, size=size_per_sample,
                                                                 exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation,
                                                                 weighted_sampling=self._non_hyponymy_weighted_sampling)
                     lst_tup_sample_b.extend(lst_tup_sample_b_swap_hypo)
-                if self._non_hyponymy_relation_target in ("hypernym","both"):
+                if "hypernym" in self._non_hyponymy_relation_target:
                     lst_tup_sample_b_swap_hyper = self._taxonomy.sample_random_hypernyms(entity=hypo, candidates=set_candidates, size=size_per_sample,
                                                                 exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation,
                                                                 weighted_sampling=self._non_hyponymy_weighted_sampling)
@@ -370,10 +375,8 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                 continue
 
             # we randomly sample the non-hyponymy relation from the mini-batch
-            if self._non_hyponymy_relation_target == "both":
-                size_per_sample = self._non_hyponymy_multiple // 2
-            else:
-                size_per_sample = self._non_hyponymy_multiple
+            n_adjuster = len(self._non_hyponymy_relation_target)
+            size_per_sample = self._non_hyponymy_multiple // n_adjuster
             batch_non_hyponymy = self._create_non_hyponymy_samples_from_hyponymy_samples(batch_hyponymy=batch_hyponymy,
                                                                                          size_per_sample=size_per_sample)
             batch_hyponymy.extend(batch_non_hyponymy)
@@ -401,10 +404,8 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                 continue
 
             # we randomly sample the non-hyponymy relation from the mini-batch
-            if self._non_hyponymy_relation_target == "both":
-                size_per_sample = self._non_hyponymy_multiple // 2
-            else:
-                size_per_sample = self._non_hyponymy_multiple
+            n_adjuster = len(self._non_hyponymy_relation_target)
+            size_per_sample = self._non_hyponymy_multiple // n_adjuster
             batch_non_hyponymy = self._create_non_hyponymy_samples_from_hyponymy_samples(batch_hyponymy=batch_hyponymy,
                                                                                          size_per_sample=size_per_sample)
             batch_hyponymy.extend(batch_non_hyponymy)
