@@ -84,11 +84,11 @@ class BasicTaxonomy(object):
     def hyponyms(self, entity):
         return nx.descendants(self.dag, entity).union(self._descendants.get(entity, set()))
 
-    @lru_cache(maxsize=1000)
+    @lru_cache(maxsize=10000)
     def ancestors_and_descendents(self, entity):
         return self.hyponyms(entity) | self.hypernyms(entity) | {entity}
 
-    @lru_cache(maxsize=1000)
+    @lru_cache(maxsize=10000)
     def descendents(self, entity):
         return self.hyponyms(entity) | {entity}
 
