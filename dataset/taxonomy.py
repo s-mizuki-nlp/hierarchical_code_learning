@@ -59,13 +59,20 @@ class BasicTaxonomy(object):
             self._hypernym_frequency[hypernym] += 1
 
     def _find_root_nodes(self, graph) -> Set[str]:
-        hash_value = graph.__hash__()
+        hash_value = graph.__hash__() + graph.number_of_nodes()
         if hash_value in self._cache_root_nodes:
             return self._cache_root_nodes[hash_value]
 
         root_nodes = set([k for k,v in graph.in_degree() if v == 0])
         self._cache_root_nodes[hash_value] = root_nodes
         return root_nodes
+
+    def remove_isolated_subgraphs(self, minimum_number_of_nodes: int = 3):
+        for root_node in self._find_root_nodes(graph=self.dag):
+            descendents = self.descendents(root_node)
+            if len(descendents) < minimum_number_of_nodes:
+                self.dag.remove_nodes_from(descendents)
+
 
     def hyponym_frequency(self, entity, not_exist: int = 0):
         if isinstance(entity, Iterable):
