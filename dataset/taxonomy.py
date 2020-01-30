@@ -73,7 +73,6 @@ class BasicTaxonomy(object):
             if len(descendents) < minimum_number_of_nodes:
                 self.dag.remove_nodes_from(descendents)
 
-
     def hyponym_frequency(self, entity, not_exist: int = 0):
         if isinstance(entity, Iterable):
             return [self._hyponym_frequency.get(e, not_exist) for e in entity]

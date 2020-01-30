@@ -205,7 +205,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             assert embedding_batch_size >= 2*hyponymy_batch_size + non_hyponymy_batch_size, \
             f"`embedding_batch_size` must be larger than `2*hyponymy_batch_size + non_hyponymy_batch_size`."
 
-        available_options = ("hyponym","hypernym")
+        available_options = ("hyponym","hypernym","co-hyponym")
         if isinstance(non_hyponymy_relation_target, str):
             non_hyponymy_relation_target = non_hyponymy_relation_target.split(",")
         for target in non_hyponymy_relation_target:
