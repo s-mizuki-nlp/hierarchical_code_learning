@@ -5,11 +5,14 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
-
+import tempfile
 import unittest
 import networkx as nx
+import numpy as np
 from dataset.taxonomy import BasicTaxonomy, WordNetTaxonomy
-
+from dataset.lexical_knowledge import HyponymyDataset
+from dataset.transform import FieldTypeConverter
+_distance_str_to_float = FieldTypeConverter(dict_field_type_converter={"distance":np.float32})
 
 class BasicTaxonomyTestCases(unittest.TestCase):
 
@@ -17,30 +20,46 @@ class BasicTaxonomyTestCases(unittest.TestCase):
     def setUpClass(cls) -> None:
 
         edges = """
-        F,I
-        F,H
-        F,A
-        A,B
-        A,E
-        B,G
-        B,D
-        E,D
-        E,J
-        J,M
-        L,K
-        K,C
-        C,J
-        N,O
+        F,I,1
+        F,H,1
+        F,A,1
+        A,B,1
+        A,E,1
+        B,G,1
+        B,D,1
+        E,D,1
+        E,J,1
+        J,M,1
+        L,K,1
+        K,C,1
+        C,J,1
+        N,O,1
         """
 
-        cls._edges = [pair.strip().split(",") for pair in edges.strip().split("\n")]
+        cls._edges = [pair.strip().split(",")[:2] for pair in edges.strip().split("\n")]
 
         g = nx.DiGraph()
         g.add_edges_from(cls._edges)
         cls._graph = g
 
-        taxonomy = BasicTaxonomy()
-        taxonomy.build_directed_acyclic_graph(iter_hyponymy_pairs=cls._edges)
+        # build taxonomy
+        tmp = tempfile.NamedTemporaryFile(prefix="edges", mode="w")
+        tmp.write(edges)
+        tmp.flush()
+
+        cfg = {
+            "path":tmp.name,
+            "header":False,
+            "delimiter":",",
+            "columns":{"hypernym":0, "hyponym":1, "distance":2},
+            "lowercase":False,
+            "transform":_distance_str_to_float
+        }
+        hyponymy_dataset = HyponymyDataset(**cfg)
+        assert len(hyponymy_dataset) > 0
+        tmp.close()
+
+        taxonomy = BasicTaxonomy(hyponymy_dataset=hyponymy_dataset)
         cls._taxonomy = taxonomy
 
     def test_depth(self):
@@ -92,8 +111,8 @@ class BasicTaxonomyTestCases(unittest.TestCase):
 
         for e1, e2 in test_cases:
             with self.subTest(e1=e1, e2=e2):
-                pred = self._taxonomy.hyponymy_distance(hypernym=e1, hyponym=e2, not_exists=None)
-                self.assertTrue(pred is None)
+                with self.assertRaises(Exception):
+                    pred = self._taxonomy.hyponymy_distance(hypernym=e1, hyponym=e2)
 
     def test_hyponymy_distance(self):
 
@@ -103,7 +122,7 @@ class BasicTaxonomyTestCases(unittest.TestCase):
 
         for e1, e2, dist_gt in test_cases:
             with self.subTest(e1=e1, e2=e2, dist=dist_gt):
-                pred = self._taxonomy.hyponymy_distance(hypernym=e1, hyponym=e2, not_exists=None)
+                pred = self._taxonomy.hyponymy_distance(hypernym=e1, hyponym=e2)
                 self.assertEqual(pred, dist_gt)
 
     def test_sample_non_hyponym_na(self):
@@ -129,7 +148,7 @@ class BasicTaxonomyTestCases(unittest.TestCase):
         hypernym = "A"
         gt = set("I,H,L,K,C,N,O".split(","))
         pred = self._taxonomy.sample_non_hyponymy(entity=hypernym, exclude_hypernyms=True, size=7)
-        self.assertSetEqual(set(pred), gt)
+        self.assertTrue(set(pred).issubset(gt))
 
     def test_sample_hyponymy_not_exclude_hypernyms(self):
 
