@@ -5,13 +5,14 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
-from typing import Optional, Iterable, Tuple, Set, Type, List, Dict, Callable
+from typing import Optional, Iterable, Tuple, Set, Type, List, Dict, Callable, Union
 from collections import defaultdict, Counter
 from functools import lru_cache
 import warnings
 import networkx as nx
 import numpy as np
 import progressbar
+import random
 
 from .lexical_knowledge import HyponymyDataset
 
@@ -266,6 +267,42 @@ class BasicTaxonomy(object):
         ret = hyponym in candidates
 
         return ret
+
+    def sample_random_co_hyponymies(self, hypernym: str, hyponym: str, size: int = 1, break_probability: float = 0.8):
+        graph = self.dag
+        lst_co_hyponymy = []
+        if (hypernym not in graph) or (hyponym not in graph):
+            return lst_co_hyponymy
+        if not nx.has_path(graph, source=hypernym, target=hyponym):
+            return lst_co_hyponymy
+
+        for _ in range(size):
+            co_hyponymy_triple = self._sample_random_co_hyponymy(hypernym, hyponym, break_probability)
+            if co_hyponymy_triple is not None:
+                lst_co_hyponymy.append(co_hyponymy_triple)
+        return lst_co_hyponymy
+
+    def _sample_random_co_hyponymy(self, hypernym: str, hyponym: str, break_probability: float) -> Tuple[int, int, float]:
+        graph = self.dag
+        shortest_path = self.hypernyms(hyponym) - self.hypernyms(hypernym)
+        children = [n for n in graph.successors(hypernym) if n != hyponym]
+        hyponymy_score = None
+
+        while len(children) > 0:
+            node = random.choice(children)
+            if node not in shortest_path:
+                hyponymy_score = -1 if hyponymy_score is None else hyponymy_score - 1
+                q = random.uniform(0,1)
+                if q <= break_probability:
+                    break
+
+            # update children
+            children = [n for n in graph.successors(node) if n != hyponym]
+
+        if hyponymy_score is None:
+            return None
+        else:
+            return (node, hyponym, hyponymy_score)
 
 
 class WordNetTaxonomy(BasicTaxonomy):

@@ -294,6 +294,10 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                                                                 exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation,
                                                                 weighted_sampling=self._non_hyponymy_weighted_sampling)
                     lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper)
+                if "co-hyponym" in self._non_hyponymy_relation_target:
+                    lst_tup_sample_b_swap_hyper_to_co_hyper = self._taxonomy.sample_random_co_hyponymies(hypernym=hyper, hyponym=hypo,
+                                                                                                        size=size_per_sample, break_probability=0.8)
+                    lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper_to_co_hyper)
 
             elif isinstance(self._taxonomy, WordNetTaxonomy):
                 # ToDo: implement wordnet-specific taxonomy class
@@ -307,6 +311,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                     "distance":distance if self._non_hyponymy_relation_distance is None else self._non_hyponymy_relation_distance
                 }
                 lst_non_hyponymy_samples.append(d)
+
             if self._verbose:
                 if len(lst_tup_sample_b):
                     f"failed to sample hyponyms: {hyper}"
