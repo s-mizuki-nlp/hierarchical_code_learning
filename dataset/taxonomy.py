@@ -36,11 +36,11 @@ class BasicTaxonomy(object):
 
     @property
     def trainset_ancestors(self):
-        return self._ancestors
+        return self._trainset_ancestors
 
     @property
     def trainset_descendants(self):
-        return self._descendants
+        return self._trainset_descendants
 
     def build_directed_acyclic_graph(self, iter_hyponymy_pairs: Iterable[Tuple[str, str]]):
         """
@@ -58,11 +58,11 @@ class BasicTaxonomy(object):
     def record_ancestors_and_descendeants(self, iter_hyponymy_pairs):
         self._hyponym_frequency = Counter()
         self._hypernym_frequency = Counter()
-        self._ancestors = defaultdict(set)
-        self._descendants = defaultdict(set)
+        self._trainset_ancestors = defaultdict(set)
+        self._trainset_descendants = defaultdict(set)
         for hypernym, hyponym in iter_hyponymy_pairs:
-            self._ancestors[hyponym].add(hypernym)
-            self._descendants[hypernym].add(hyponym)
+            self._trainset_ancestors[hyponym].add(hypernym)
+            self._trainset_descendants[hypernym].add(hyponym)
             self._hyponym_frequency[hyponym] += 1
             self._hypernym_frequency[hypernym] += 1
 
@@ -323,26 +323,31 @@ class WordNetTaxonomy(BasicTaxonomy):
 
     _SEPARATOR = "▁" # U+2581
 
-    def __init__(self, hyponymy_dataset: Optional[HyponymyDataset] = None):
+    def __init__(self, hyponymy_dataset: Optional[HyponymyDataset] = None, synset_aware: bool = False):
 
         # build taxonomy as for each part-of-speech tags as DAG
         dict_iter_hyponymy_pairs = defaultdict(list)
+        dict_iter_trainset_pairs = defaultdict(list)
         for record in hyponymy_dataset:
-            if record["distance"] > 1.0:
-                continue
             entity_type = record["pos"]
-            synset_hyper = record["synset_hypernym"]
-            hyper = record["hypernym"]
-            synset_hypo = record["synset_hyponym"]
-            hypo = record["hyponym"]
 
-            # entity_hyper = self.synset_and_lemma_to_entity(synset_hyper, hyper)
-            # entity_hypo = self.synset_and_lemma_to_entity(synset_hypo, hypo)
-            # dict_iter_hyponymy_pairs[entity_type].append((entity_hyper, entity_hypo))
-            dict_iter_hyponymy_pairs[entity_type].append((hyper, hypo))
+            if synset_aware:
+                lemma_hyper = record["hypernym"]
+                lemma_hypo = record["hyponym"]
+                synset_hyper = record["synset_hypernym"]
+                synset_hypo = record["synset_hyponym"]
+                entity_hyper = self.synset_and_lemma_to_entity(synset_hyper, lemma_hyper)
+                entity_hypo = self.synset_and_lemma_to_entity(synset_hypo, lemma_hypo)
+            else:
+                entity_hyper = record["hypernym"]
+                entity_hypo = record["hyponym"]
+
+            dict_iter_trainset_pairs[entity_type].append((entity_hyper, entity_hypo))
+            if record["distance"] == 1.0:
+                dict_iter_hyponymy_pairs[entity_type].append((entity_hyper, entity_hypo))
 
         self.build_directed_acyclic_graph(dict_iter_hyponymy_pairs)
-        self.record_ancestors_and_descendeants(dict_iter_hyponymy_pairs)
+        self.record_ancestors_and_descendeants(dict_iter_trainset_pairs)
 
     def build_directed_acyclic_graph(self, dict_iter_hyponymy_pairs: Dict[str, Iterable[Tuple[str, str]]]):
         self._dag = {}
@@ -357,12 +362,12 @@ class WordNetTaxonomy(BasicTaxonomy):
         self._cache_root_nodes = {}
 
     def record_ancestors_and_descendeants(self, dict_iter_hyponymy_pairs):
-        self._ancestors = defaultdict(defaultdict(set))
-        self._descendants = defaultdict(defaultdict(set))
+        self._trainset_ancestors = defaultdict(lambda :defaultdict(set))
+        self._trainset_descendants = defaultdict(lambda :defaultdict(set))
         for entity_type, iter_hyponymy_pairs in dict_iter_hyponymy_pairs.items():
             for hypernym, hyponym in iter_hyponymy_pairs:
-                self._ancestors[entity_type][hyponym].add(hypernym)
-                self._descendants[entity_type][hypernym].add(hyponym)
+                self._trainset_ancestors[entity_type][hyponym].add(hypernym)
+                self._trainset_descendants[entity_type][hypernym].add(hyponym)
 
     def synset_and_lemma_to_entity(self, synset: str, lemma: str):
         return synset + self._SEPARATOR + lemma
@@ -373,21 +378,24 @@ class WordNetTaxonomy(BasicTaxonomy):
     def entity_to_synset_and_lemma(self, entity: str):
         return entity.split("_")
 
+    @lru_cache(1000000)
     def hypernyms(self, entity, part_of_speech):
         self.activate_entity_type(entity_type=part_of_speech)
-        return nx.ancestors(self.dag, entity).union(self._ancestors.get(entity, set()))
+        return super().hypernyms(entity)
 
+    @lru_cache(1000000)
     def hyponyms(self, entity, part_of_speech):
-        return nx.descendants(self.dag, entity).union(self._descendants.get(entity, set()))
-
+        self.activate_entity_type(entity_type=part_of_speech)
+        return super().hyponyms(entity)
 
     def depth(self, entity, part_of_speech, offset=1, not_exists=None):
         self.activate_entity_type(entity_type=part_of_speech)
         return super().depth(entity, offset, not_exists)
 
     def hyponymy_score_slow(self, hypernym, hyponym, part_of_speech, dtype: Type = float, not_exists=None):
-        self.activate_entity_type(entity_type=part_of_speech)
-        return super().hyponymy_score_slow(hypernym, hyponym, dtype)
+        raise NotImplementedError(f"you can't use this method.")
+        # self.activate_entity_type(entity_type=part_of_speech)
+        # return super().hyponymy_score_slow(hypernym, hyponym, dtype)
 
     def hyponymy_score(self, hypernym, hyponym, part_of_speech, dtype: Type = float, not_exists=None):
         self.activate_entity_type(entity_type=part_of_speech)
@@ -401,6 +409,10 @@ class WordNetTaxonomy(BasicTaxonomy):
         self.activate_entity_type(entity_type=part_of_speech)
         return super().sample_random_hyponyms(hypernym, candidates, size, exclude_hypernyms)
 
+    def sample_random_co_hyponyms(self, hypernym: str, hyponym: str, part_of_speech: str, size: int = 1, break_probability: float = 0.5):
+        self.activate_entity_type(entity_type=part_of_speech)
+        return super().sample_random_co_hyponyms(hypernym, hyponym, size, break_probability)
+
     @property
     def active_entity_type(self):
         return self._active_entity_type
@@ -410,11 +422,12 @@ class WordNetTaxonomy(BasicTaxonomy):
 
     @property
     def dag(self):
-        if self.active_entity_type is not None:
-            return self._dag[self.active_entity_type]
-        else:
-            return self._dag
+        return self._dag.get(self.active_entity_type, self._dag)
 
     @property
     def entity_types(self):
         return set(self._dag.keys())
+
+    @property
+    def trainset_ancestors(self):
+        return self._trainset_ancestors.get(self.active_entity_type, self._trainset_ancestors)
