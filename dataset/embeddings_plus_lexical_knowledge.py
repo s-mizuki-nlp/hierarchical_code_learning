@@ -295,12 +295,14 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                                                                 weighted_sampling=self._non_hyponymy_weighted_sampling)
                     lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper)
                 if "co-hyponym" in self._non_hyponymy_relation_target:
-                    lst_tup_sample_b_swap_hyper_to_co_hyper = self._taxonomy.sample_random_co_hyponymies(hypernym=hyper, hyponym=hypo,
-                                                                                                        size=size_per_sample, break_probability=0.8)
+                    lst_tup_sample_b_swap_hyper_to_co_hyper = self._taxonomy.sample_random_co_hyponyms(hypernym=hyper, hyponym=hypo,
+                                                                                                       size=size_per_sample, break_probability=0.8)
                     lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper_to_co_hyper)
 
             elif isinstance(self._taxonomy, WordNetTaxonomy):
                 # ToDo: implement wordnet-specific taxonomy class
+                synset_hyper = hyponymy["synset_hypernym"]
+                synset_hypo = hyponymy["synset_hyponym"]
                 raise NotImplementedError("not yet implemented.")
 
             for hypernym, hyponym, distance in lst_tup_sample_b:
@@ -328,7 +330,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             if dist_orig > 0:
                 dist_rev = - dist_orig
             else:
-                dist_rev = self._taxonomy.hyponymy_distance_fast(hypernym=hyper_rev, hyponym=hypo_rev)
+                dist_rev = self._taxonomy.hyponymy_score(hypernym=hyper_rev, hyponym=hypo_rev)
 
             d = {
                 "hyponym":hypo_rev,

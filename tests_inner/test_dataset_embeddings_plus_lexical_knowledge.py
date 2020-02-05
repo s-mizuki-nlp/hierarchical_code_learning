@@ -243,7 +243,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelationTestCases(unittest.
             # assert distance of the non-hyponymy relation
             with self.subTest(hyponym=hyponym, hypernym=hypernym):
                 if self._dataset._non_hyponymy_relation_distance is None:
-                    distance_gt = taxonomy.hyponymy_distance(hypernym=hypernym, hyponym=hyponym)
+                    distance_gt = taxonomy.hyponymy_score_slow(hypernym=hypernym, hyponym=hyponym)
                 else:
                     distance_gt = self._dataset._non_hyponymy_relation_distance
                 self.assertEqual(distance, distance_gt)

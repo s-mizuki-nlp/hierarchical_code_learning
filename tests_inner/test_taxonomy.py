@@ -112,7 +112,7 @@ class BasicTaxonomyTestCases(unittest.TestCase):
         for e1, e2 in test_cases:
             with self.subTest(e1=e1, e2=e2):
                 with self.assertRaises(Exception):
-                    pred = self._taxonomy.hyponymy_distance(hypernym=e1, hyponym=e2)
+                    pred = self._taxonomy.hyponymy_score_slow(hypernym=e1, hyponym=e2)
 
     def test_hyponymy_distance(self):
 
@@ -122,7 +122,7 @@ class BasicTaxonomyTestCases(unittest.TestCase):
 
         for e1, e2, dist_gt in test_cases:
             with self.subTest(e1=e1, e2=e2, dist=dist_gt):
-                pred = self._taxonomy.hyponymy_distance(hypernym=e1, hyponym=e2)
+                pred = self._taxonomy.hyponymy_score_slow(hypernym=e1, hyponym=e2)
                 self.assertEqual(pred, dist_gt)
 
     def test_sample_non_hyponym_na(self):
