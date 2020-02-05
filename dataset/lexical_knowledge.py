@@ -136,7 +136,7 @@ class HyponymyDataset(Dataset):
                 entry = self.transform(entry)
             yield entry
 
-    def __getitem__(self, idx: Union[int, List[int], torch.Tensor]):
+    def __getitem__(self, idx: Union[int, List[int], torch.Tensor, slice]):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
@@ -145,6 +145,10 @@ class HyponymyDataset(Dataset):
             s_entry = self._lst_samples[idx]
         elif isinstance(idx, list):
             s_entry = [self._lst_samples[i] for i in idx]
+        elif isinstance(idx, slice):
+            s_entry = self._lst_samples[idx]
+        else:
+            raise NotImplementedError(f"unsupported index type: {type(idx)}")
 
         # entry (entries) to instances
         if isinstance(s_entry, str):
