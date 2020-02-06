@@ -325,6 +325,7 @@ class WordNetTaxonomy(BasicTaxonomy):
 
     def __init__(self, hyponymy_dataset: Optional[HyponymyDataset] = None, synset_aware: bool = False):
 
+        self._synset_aware = synset_aware
         # build taxonomy as for each part-of-speech tags as DAG
         dict_iter_hyponymy_pairs = defaultdict(list)
         dict_iter_trainset_pairs = defaultdict(list)
@@ -360,6 +361,7 @@ class WordNetTaxonomy(BasicTaxonomy):
 
         self._active_entity_type = None
         self._cache_root_nodes = {}
+        self._nodes = {entity_type:set(graph.nodes) for entity_type, graph in self._dag.items()}
 
     def record_ancestors_and_descendeants(self, dict_iter_hyponymy_pairs):
         self._trainset_ancestors = defaultdict(lambda :defaultdict(set))
@@ -413,6 +415,14 @@ class WordNetTaxonomy(BasicTaxonomy):
         self.activate_entity_type(entity_type=part_of_speech)
         return super().sample_random_co_hyponyms(hypernym, hyponym, size, break_probability)
 
+    def search_entities_by_lemma(self, lemma: str, part_of_speech: str):
+        self.activate_entity_type(entity_type=part_of_speech)
+        if self._synset_aware:
+            key = self._SEPARATOR + lemma
+            return {entity for entity in self.nodes if entity.endswith(key)}
+        else:
+            return lemma if lemma in self.nodes else {}
+
     @property
     def active_entity_type(self):
         return self._active_entity_type
@@ -431,3 +441,7 @@ class WordNetTaxonomy(BasicTaxonomy):
     @property
     def trainset_ancestors(self):
         return self._trainset_ancestors.get(self.active_entity_type, self._trainset_ancestors)
+
+    @property
+    def nodes(self):
+        return self._nodes.get(self.active_entity_type, self._nodes)
