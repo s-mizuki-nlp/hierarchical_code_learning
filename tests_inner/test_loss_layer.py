@@ -35,16 +35,23 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         mat_p_x_2 = utils.generate_probability_matrix(vec_p_x_zero, vec_x_repr, n_digits, n_ary, tau)
         mat_p_y_2 = utils.generate_probability_matrix(vec_p_y_zero, vec_y_repr, n_digits, n_ary, tau)
 
+        vec_p_x_zero = np.array([0.02,0.02,0.02,0.02])
+        vec_x_repr = np.array([2,2,3,3])
+        vec_p_y_zero = np.array([0.02,0.02,0.02,0.02])
+        vec_y_repr = np.array([1,1,2,2])
+        mat_p_x_3 = utils.generate_probability_matrix(vec_p_x_zero, vec_x_repr, n_digits, n_ary, tau)
+        mat_p_y_3 = utils.generate_probability_matrix(vec_p_y_zero, vec_y_repr, n_digits, n_ary, tau)
+
         # x:hypernym, y:hyponym
         # mat_p_*: (n_dim, n_ary)
         self._mat_p_x = mat_p_x_1
         self._mat_p_y = mat_p_y_1
         # arry_p_*: (n_batch, n_dim, n_ary)
-        self._arry_p_x = np.stack([mat_p_x_1, mat_p_x_2])
-        self._arry_p_y = np.stack([mat_p_y_1, mat_p_y_2])
-        self._arry_p_batch = np.stack([mat_p_x_1, mat_p_x_2, mat_p_y_1, mat_p_y_2])
+        self._arry_p_x = np.stack([mat_p_x_1, mat_p_x_2, mat_p_x_3])
+        self._arry_p_y = np.stack([mat_p_y_1, mat_p_y_2, mat_p_y_3])
+        self._arry_p_batch = np.stack([mat_p_x_1, mat_p_x_2, mat_p_x_3, mat_p_y_1, mat_p_y_2, mat_p_y_3])
         # train_signal: (hypernym_index, hyponym_index, hyponymy_score)
-        self._hyponymy_tuples = [(0, 2, 1.0), (1, 3, -1.0)] # [(x1, y1, 1.0), (x2, y2, -1.0)]
+        self._hyponymy_tuples = [(0, 3, 1.0), (1, 4, -1.0), (2, 5, -4.0)] # [(x1, y1, 1.0), (x2, y2, -1.0), (x3, y3, -4.0)]
 
         self._t_mat_p_x = torch.from_numpy(self._mat_p_x)
         self._t_mat_p_y = torch.from_numpy(self._mat_p_y)
@@ -52,8 +59,8 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         self._t_arry_p_y = torch.from_numpy(self._arry_p_y)
         self._t_arry_p_batch = torch.from_numpy(self._arry_p_batch)
 
-        self._normalize_code_length = True
-        self._normalize_coefficient_for_ground_truth = 1/3.0
+        self._normalize_code_length = False
+        self._normalize_coefficient_for_ground_truth = None
         self._loss_layer = HyponymyScoreLoss(normalize_hyponymy_score=self._normalize_code_length,
                                              normalize_coefficient_for_ground_truth=self._normalize_coefficient_for_ground_truth,
                                              distance_metric="mse")
@@ -156,11 +163,9 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         if self._normalize_code_length:
             y_pred /= self._n_digits
             y_true *= self._normalize_coefficient_for_ground_truth
+        print(y_pred)
+        print(y_true)
         expected = np.mean((y_pred - y_true)**2) # L2 loss
         actual = self._loss_layer.forward(t_test, lst_train)
 
         self.assertTrue(np.allclose(expected, actual))
-
-
-if __name__ == '__main__':
-    unittest.main()
