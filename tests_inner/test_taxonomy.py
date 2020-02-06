@@ -141,8 +141,8 @@ class BasicTaxonomyTestCases(unittest.TestCase):
         # possible, but only one choice
         hypernym = "O"
         pred = self._taxonomy.sample_non_hyponymy(entity=hypernym, candidates=["N", "O"], exclude_hypernyms=False, size=2)
-        gt = ["N","N"]
-        self.assertListEqual(pred, gt)
+        gt = ("N","N")
+        self.assertTupleEqual(pred, gt)
 
         # possible, but deterministic
         hypernym = "A"
