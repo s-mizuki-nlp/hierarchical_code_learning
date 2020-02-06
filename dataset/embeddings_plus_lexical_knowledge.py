@@ -308,7 +308,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
             # convert them to dictionary format
             keys = ("hypernym", "hyponym", "distance")
-            lst_non_hyponymy_samples = [dict(zip(keys, values)) for values in lst_non_hyponymy_samples]
+            lst_non_hyponymy_samples.extend([dict(zip(keys, values)) for values in lst_tup_sample_b])
 
             if self._verbose:
                 if len(lst_tup_sample_b):
