@@ -11,7 +11,7 @@ from functools import lru_cache
 import warnings
 import networkx as nx
 import numpy as np
-import progressbar
+import math
 import random
 
 from .lexical_knowledge import HyponymyDataset
@@ -24,7 +24,7 @@ class BasicTaxonomy(object):
         iter_hyponymy_pairs = ((record["hypernym"], record["hyponym"]) for record in hyponymy_dataset if record["distance"] == 1.0)
         self.build_directed_acyclic_graph(iter_hyponymy_pairs)
         iter_hyponymy_pairs = ((record["hypernym"], record["hyponym"]) for record in hyponymy_dataset)
-        self.record_ancestors_and_descendeants(iter_hyponymy_pairs)
+        self.record_ancestors_and_descendants(iter_hyponymy_pairs)
 
     @property
     def dag(self):
@@ -53,18 +53,14 @@ class BasicTaxonomy(object):
 
         self._dag = graph
         self._cache_root_nodes = {}
-        self._nodes = set(graph.nodes)
+        self._nodes = tuple(graph.nodes)
 
-    def record_ancestors_and_descendeants(self, iter_hyponymy_pairs):
-        self._hyponym_frequency = Counter()
-        self._hypernym_frequency = Counter()
+    def record_ancestors_and_descendants(self, iter_hyponymy_pairs):
         self._trainset_ancestors = defaultdict(set)
         self._trainset_descendants = defaultdict(set)
         for hypernym, hyponym in iter_hyponymy_pairs:
             self._trainset_ancestors[hyponym].add(hypernym)
             self._trainset_descendants[hypernym].add(hyponym)
-            self._hyponym_frequency[hyponym] += 1
-            self._hypernym_frequency[hypernym] += 1
 
     def _find_root_nodes(self, graph) -> Set[str]:
         hash_value = graph.__hash__() + graph.number_of_nodes()
@@ -75,39 +71,25 @@ class BasicTaxonomy(object):
         self._cache_root_nodes[hash_value] = root_nodes
         return root_nodes
 
-    def remove_isolated_subgraphs(self, minimum_number_of_nodes: int = 3):
-        for root_node in self._find_root_nodes(graph=self.dag):
-            descendents = self.hyponyms_and_self(root_node)
-            if len(descendents) < minimum_number_of_nodes:
-                self.dag.remove_nodes_from(descendents)
-
-    def hyponym_frequency(self, entity, not_exist: int = 0):
-        if isinstance(entity, Iterable):
-            return [self._hyponym_frequency.get(e, not_exist) for e in entity]
-        else:
-            return self._hyponym_frequency.get(entity, not_exist)
-
-    def hypernym_frequency(self, entity, not_exist: int = 0):
-        if isinstance(entity, Iterable):
-            return [self._hypernym_frequency.get(e, not_exist) for e in entity]
-        else:
-            return self._hypernym_frequency.get(entity, not_exist)
+    @lru_cache(maxsize=1000000)
+    def dag_ancestors(self, entity):
+        return nx.ancestors(self.dag, entity)
 
     def hypernyms(self, entity):
-        return nx.ancestors(self.dag, entity).union(self.trainset_ancestors.get(entity, set()))
+        return self.dag_ancestors(entity).union(self.trainset_ancestors.get(entity, set()))
 
     def hyponyms(self, entity):
         return nx.descendants(self.dag, entity).union(self.trainset_descendants.get(entity, set()))
 
-    @lru_cache(maxsize=10000)
+    @lru_cache(maxsize=1000000)
     def hypernyms_and_hyponyms_and_self(self, entity):
         return self.hyponyms(entity) | self.hypernyms(entity) | {entity}
 
-    @lru_cache(maxsize=10000)
+    @lru_cache(maxsize=1000000)
     def hyponyms_and_self(self, entity):
         return self.hyponyms(entity) | {entity}
 
-    @lru_cache(maxsize=10000)
+    @lru_cache(maxsize=1000000)
     def co_hyponyms(self, entity):
         graph = self.dag
         if entity not in graph:
@@ -118,7 +100,7 @@ class BasicTaxonomy(object):
         co_hyponyms = branches - self.hypernyms_and_hyponyms_and_self(entity)
         return co_hyponyms
 
-    @lru_cache(maxsize=10000)
+    @lru_cache(maxsize=1000000)
     def depth(self, entity, offset=1, not_exists=None):
         graph = self.dag
 
@@ -160,8 +142,8 @@ class BasicTaxonomy(object):
         if hyponym not in graph:
             raise ValueError(f"invalid node is specified: {hyponym}")
 
-        ancestors_hypernym = nx.ancestors(self.dag, hypernym)
-        ancestors_hyponym = nx.ancestors(self.dag, hyponym)
+        ancestors_hypernym = self.dag_ancestors(hypernym)
+        ancestors_hyponym = self.dag_ancestors(hyponym)
         ancestors_common = ancestors_hypernym.intersection(ancestors_hyponym)
 
         # 1) hypernym is the ancestor of the hyponym
@@ -206,8 +188,7 @@ class BasicTaxonomy(object):
         return dtype(depth_lca)
 
     def sample_non_hyponymy(self, entity, candidates: Optional[Iterable[str]] = None,
-                            size: int = 1, exclude_hypernyms: bool = True,
-                            candidate_weight_function = None) -> List[str]:
+                            size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
         graph = self.dag
         if entity not in graph:
             return []
@@ -216,55 +197,38 @@ class BasicTaxonomy(object):
             non_candidates = self.hypernyms_and_hyponyms_and_self(entity)
         else:
             non_candidates = self.hyponyms_and_self(entity)
-        candidates = self._nodes if candidates is None else set(candidates).intersection(self._nodes)
-        candidates = candidates - non_candidates
+        candidates = self._nodes if candidates is None else tuple(set(candidates).intersection(set(self._nodes)))
 
-        if len(candidates) == 0:
+        if len(candidates) - len(non_candidates) <= 0:
             return []
-        elif len(candidates) == 1:
-            return [next(iter(candidates))]*size
+        elif len(candidates) < size:
+            candidates = (candidates)*(math.ceil(size/len(candidates)))
 
         # sampling with replacement
-        # if `candidate_weight_function` is specified, then weighted sampling
-        candidates = list(candidates)
-        if candidate_weight_function is None:
-            sampled = np.random.choice(candidates, size=size)
-        else:
-            vec_weights = np.fromiter(candidate_weight_function(candidates), dtype=np.float)
-            vec_weights = vec_weights / np.sum(vec_weights)
-            sampled = np.random.choice(candidates, size=size, p=vec_weights)
-
-        sampled = sampled.tolist()
+        sampled = tuple()
+        while len(sampled) < size:
+            sampled_new = random.sample(candidates, size)
+            sampled_new = tuple(s for s in sampled_new if s not in non_candidates)
+            sampled = sampled + sampled_new
+        sampled = sampled[:size]
 
         return sampled
 
     def sample_random_hyponyms(self, entity: str,
                                candidates: Optional[Iterable[str]] = None,
-                               size: int = 1, exclude_hypernyms: bool = True,
-                               weighted_sampling: bool = False):
-        if weighted_sampling:
-            weight_function = lambda e: self.hyponym_frequency(e, not_exist=1)
-        else:
-            weight_function = None
+                               size: int = 1, exclude_hypernyms: bool = True):
         lst_non_hyponymy_entities = self.sample_non_hyponymy(entity=entity, candidates=candidates,
-                                                             size=size, exclude_hypernyms=exclude_hypernyms,
-                                                             candidate_weight_function=weight_function)
+                                                             size=size, exclude_hypernyms=exclude_hypernyms)
         lst_ret = [(entity, hyponym, self.hyponymy_score(entity, hyponym)) for hyponym in lst_non_hyponymy_entities]
 
         return lst_ret
 
     def sample_random_hypernyms(self, entity: str,
                                 candidates: Optional[Iterable[str]] = None,
-                                size: int = 1, exclude_hypernyms: bool = True,
-                                weighted_sampling: bool = False):
+                                size: int = 1, exclude_hypernyms: bool = True):
 
-        if weighted_sampling:
-            weight_function = lambda e: self.hypernym_frequency(e, not_exist=1)
-        else:
-            weight_function = None
         lst_non_hyponymy_entities = self.sample_non_hyponymy(entity=entity, candidates=candidates,
-                                                             size=size, exclude_hypernyms=exclude_hypernyms,
-                                                             candidate_weight_function=weight_function)
+                                                             size=size, exclude_hypernyms=exclude_hypernyms)
         lst_ret = [(hypernym, entity, self.hyponymy_score(hypernym, entity)) for hypernym in lst_non_hyponymy_entities]
 
         return lst_ret
@@ -321,34 +285,22 @@ class BasicTaxonomy(object):
 
 class WordNetTaxonomy(BasicTaxonomy):
 
-    _SEPARATOR = "▁" # U+2581
+    def __init__(self, hyponymy_dataset: Optional[HyponymyDataset] = None):
 
-    def __init__(self, hyponymy_dataset: Optional[HyponymyDataset] = None, synset_aware: bool = False):
-
-        self._synset_aware = synset_aware
         # build taxonomy as for each part-of-speech tags as DAG
         dict_iter_hyponymy_pairs = defaultdict(list)
         dict_iter_trainset_pairs = defaultdict(list)
         for record in hyponymy_dataset:
             entity_type = record["pos"]
-
-            if synset_aware:
-                lemma_hyper = record["hypernym"]
-                lemma_hypo = record["hyponym"]
-                synset_hyper = record["synset_hypernym"]
-                synset_hypo = record["synset_hyponym"]
-                entity_hyper = self.synset_and_lemma_to_entity(synset_hyper, lemma_hyper)
-                entity_hypo = self.synset_and_lemma_to_entity(synset_hypo, lemma_hypo)
-            else:
-                entity_hyper = record["hypernym"]
-                entity_hypo = record["hyponym"]
+            entity_hyper = record["hypernym"]
+            entity_hypo = record["hyponym"]
 
             dict_iter_trainset_pairs[entity_type].append((entity_hyper, entity_hypo))
             if record["distance"] == 1.0:
                 dict_iter_hyponymy_pairs[entity_type].append((entity_hyper, entity_hypo))
 
         self.build_directed_acyclic_graph(dict_iter_hyponymy_pairs)
-        self.record_ancestors_and_descendeants(dict_iter_trainset_pairs)
+        self.record_ancestors_and_descendants(dict_iter_trainset_pairs)
 
     def build_directed_acyclic_graph(self, dict_iter_hyponymy_pairs: Dict[str, Iterable[Tuple[str, str]]]):
         self._dag = {}
@@ -363,7 +315,7 @@ class WordNetTaxonomy(BasicTaxonomy):
         self._cache_root_nodes = {}
         self._nodes = {entity_type:set(graph.nodes) for entity_type, graph in self._dag.items()}
 
-    def record_ancestors_and_descendeants(self, dict_iter_hyponymy_pairs):
+    def record_ancestors_and_descendants(self, dict_iter_hyponymy_pairs):
         self._trainset_ancestors = defaultdict(lambda :defaultdict(set))
         self._trainset_descendants = defaultdict(lambda :defaultdict(set))
         for entity_type, iter_hyponymy_pairs in dict_iter_hyponymy_pairs.items():
@@ -371,21 +323,12 @@ class WordNetTaxonomy(BasicTaxonomy):
                 self._trainset_ancestors[entity_type][hyponym].add(hypernym)
                 self._trainset_descendants[entity_type][hypernym].add(hyponym)
 
-    def synset_and_lemma_to_entity(self, synset: str, lemma: str):
-        return synset + self._SEPARATOR + lemma
-
-    def entity_to_lemma(self, entity: str):
-        return entity[entity.find(self._SEPARATOR)+1:]
-
-    def entity_to_synset_and_lemma(self, entity: str):
-        return entity.split("_")
-
-    @lru_cache(1000000)
+    @lru_cache(10000)
     def hypernyms(self, entity, part_of_speech):
         self.activate_entity_type(entity_type=part_of_speech)
         return super().hypernyms(entity)
 
-    @lru_cache(1000000)
+    @lru_cache(10000)
     def hyponyms(self, entity, part_of_speech):
         self.activate_entity_type(entity_type=part_of_speech)
         return super().hyponyms(entity)
@@ -395,9 +338,10 @@ class WordNetTaxonomy(BasicTaxonomy):
         return super().depth(entity, offset, not_exists)
 
     def hyponymy_score_slow(self, hypernym, hyponym, part_of_speech, dtype: Type = float, not_exists=None):
-        raise NotImplementedError(f"you can't use this method.")
-        # self.activate_entity_type(entity_type=part_of_speech)
-        # return super().hyponymy_score_slow(hypernym, hyponym, dtype)
+        self.activate_entity_type(entity_type=part_of_speech)
+        if not nx.is_directed_acyclic_graph(self.dag):
+            raise NotImplementedError(f"you can't use this method.")
+        return super().hyponymy_score_slow(hypernym, hyponym, dtype)
 
     def hyponymy_score(self, hypernym, hyponym, part_of_speech, dtype: Type = float, not_exists=None):
         self.activate_entity_type(entity_type=part_of_speech)
@@ -407,21 +351,14 @@ class WordNetTaxonomy(BasicTaxonomy):
         self.activate_entity_type(entity_type=part_of_speech)
         return super().sample_non_hyponymy(entity, candidates, size, exclude_hypernyms)
 
-    def sample_random_hyponyms(self, hypernym, part_of_speech, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True):
+    def sample_random_hyponyms(self, hypernym, part_of_speech, candidates: Optional[Iterable[str]] = None,
+                               size: int = 1, exclude_hypernyms: bool = True):
         self.activate_entity_type(entity_type=part_of_speech)
         return super().sample_random_hyponyms(hypernym, candidates, size, exclude_hypernyms)
 
     def sample_random_co_hyponyms(self, hypernym: str, hyponym: str, part_of_speech: str, size: int = 1, break_probability: float = 0.5):
         self.activate_entity_type(entity_type=part_of_speech)
         return super().sample_random_co_hyponyms(hypernym, hyponym, size, break_probability)
-
-    def search_entities_by_lemma(self, lemma: str, part_of_speech: str):
-        self.activate_entity_type(entity_type=part_of_speech)
-        if self._synset_aware:
-            key = self._SEPARATOR + lemma
-            return {entity for entity in self.nodes if entity.endswith(key)}
-        else:
-            return lemma if lemma in self.nodes else {}
 
     @property
     def active_entity_type(self):
@@ -445,3 +382,43 @@ class WordNetTaxonomy(BasicTaxonomy):
     @property
     def nodes(self):
         return self._nodes.get(self.active_entity_type, self._nodes)
+
+
+class SynsetAwareWordnetTaxonomy(WordNetTaxonomy):
+
+    _SEPARATOR = "▁" # U+2581
+
+    def __init__(self, hyponymy_dataset: Optional[HyponymyDataset] = None):
+
+        # build taxonomy as for each part-of-speech tags as DAG
+        dict_iter_hyponymy_pairs = defaultdict(list)
+        dict_iter_trainset_pairs = defaultdict(list)
+        for record in hyponymy_dataset:
+            entity_type = record["pos"]
+            lemma_hyper = record["hypernym"]
+            lemma_hypo = record["hyponym"]
+            synset_hyper = record["synset_hypernym"]
+            synset_hypo = record["synset_hyponym"]
+            entity_hyper = self.synset_and_lemma_to_entity(synset_hyper, lemma_hyper)
+            entity_hypo = self.synset_and_lemma_to_entity(synset_hypo, lemma_hypo)
+
+            dict_iter_trainset_pairs[entity_type].append((entity_hyper, entity_hypo))
+            if record["distance"] == 1.0:
+                dict_iter_hyponymy_pairs[entity_type].append((entity_hyper, entity_hypo))
+
+        self.build_directed_acyclic_graph(dict_iter_hyponymy_pairs)
+        self.record_ancestors_and_descendants(dict_iter_trainset_pairs)
+
+    def synset_and_lemma_to_entity(self, synset: str, lemma: str):
+        return synset + self._SEPARATOR + lemma
+
+    def entity_to_lemma(self, entity: str):
+        return entity[entity.find(self._SEPARATOR)+1:]
+
+    def entity_to_synset_and_lemma(self, entity: str):
+        return entity.split(self._SEPARATOR)
+
+    def search_entities_by_lemma(self, lemma: str, part_of_speech: str):
+        self.activate_entity_type(entity_type=part_of_speech)
+        key = self._SEPARATOR + lemma
+        return {entity for entity in self.nodes if entity.endswith(key)}
