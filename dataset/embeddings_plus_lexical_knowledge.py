@@ -301,14 +301,14 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                 synset_hypo = hyponymy["synset_hyponym"]
                 raise NotImplementedError("not yet implemented.")
 
-            for hypernym, hyponym, distance in lst_tup_sample_b:
-                d = {
-                    "hyponym":hyponym,
-                    "hypernym":hypernym,
-                    # if user explicitly specify the non-hyponymy relation distance, then update samples with its value.
-                    "distance":distance if self._non_hyponymy_relation_distance is None else self._non_hyponymy_relation_distance
-                }
-                lst_non_hyponymy_samples.append(d)
+            # if distance is specified, then overwrite all samples with specified value.
+            if self._non_hyponymy_relation_distance is not None:
+                update_function = lambda tup: tup[2] + (self._non_hyponymy_relation_distance,)
+                lst_tup_sample_b = list(map(update_function, lst_tup_sample_b))
+
+            # convert them to dictionary format
+            keys = ("hypernym", "hyponym", "distance")
+            lst_non_hyponymy_samples = [dict(zip(keys, values)) for values in lst_non_hyponymy_samples]
 
             if self._verbose:
                 if len(lst_tup_sample_b):
