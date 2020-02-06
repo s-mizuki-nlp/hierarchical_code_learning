@@ -89,7 +89,6 @@ class BasicTaxonomy(object):
     def hyponyms_and_self(self, entity):
         return self.hyponyms(entity) | {entity}
 
-    @lru_cache(maxsize=1000000)
     def co_hyponyms(self, entity):
         graph = self.dag
         if entity not in graph:
@@ -107,7 +106,7 @@ class BasicTaxonomy(object):
         if entity not in graph:
             return not_exists
 
-        direct_root_nodes = nx.ancestors(graph, entity) & self._find_root_nodes(graph)
+        direct_root_nodes = self.dag_ancestors(entity) & self._find_root_nodes(graph)
         if len(direct_root_nodes) == 0:
             depth = 0
         else:
@@ -124,15 +123,20 @@ class BasicTaxonomy(object):
             raise ValueError(f"invalid node is specified: {hyponym}")
 
         lowest_common_ancestor = nx.lowest_common_ancestor(graph, hypernym, hyponym)
-        # 1) not connected
-        if lowest_common_ancestor is None:
-            dist = - self.depth(hypernym)
-        # 2) hypernym is the ancestor of the hyponym
-        elif lowest_common_ancestor == hypernym:
+
+        # 1) hypernym is the ancestor of the hyponym (=hyponymy)
+        if nx.has_path(graph, hypernym, hyponym):
             dist = nx.shortest_path_length(graph, hypernym, hyponym)
+        # 2) hyponym is the ancestor of the hypernym (=reverse hyponymy)
+        elif nx.has_path(graph, hyponym, hypernym):
+            dist = - nx.shortest_path_length(graph, hyponym, hypernym)
         # 3) these two entities are the co-hyponym
-        else:
+        elif lowest_common_ancestor is not None:
             dist = - nx.shortest_path_length(graph, lowest_common_ancestor, hypernym)
+        # 4) other
+        else:
+            dist = - self.depth(hypernym)
+
         return dtype(dist)
 
     def hyponymy_score(self, hypernym, hyponym, dtype: Type = float):
@@ -260,10 +264,10 @@ class BasicTaxonomy(object):
                 lst_co_hyponymy.append(co_hyponymy_triple)
         return lst_co_hyponymy
 
-    def _sample_random_co_hyponymy(self, hypernym: str, hyponym: str, break_probability: float) -> Tuple[int, int, float]:
+    def _sample_random_co_hyponymy(self, hypernym: str, hyponym: str, break_probability: float) -> Tuple[str, str, float]:
         graph = self.dag
         shortest_path = self.hypernyms(hyponym) - self.hypernyms(hypernym)
-        children = [n for n in graph.successors(hypernym) if n != hyponym]
+        children = tuple(n for n in graph.successors(hypernym) if n != hyponym)
         hyponymy_score = None
 
         while len(children) > 0:
@@ -275,7 +279,7 @@ class BasicTaxonomy(object):
                     break
 
             # update children
-            children = [n for n in graph.successors(node) if n != hyponym]
+            children = tuple(n for n in graph.successors(node) if n != hyponym)
 
         if hyponymy_score is None:
             return None

@@ -5,6 +5,7 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import tempfile
 import unittest
 import networkx as nx
@@ -112,7 +113,7 @@ class BasicTaxonomyTestCases(unittest.TestCase):
         for e1, e2 in test_cases:
             with self.subTest(e1=e1, e2=e2):
                 with self.assertRaises(Exception):
-                    pred = self._taxonomy.hyponymy_score_slow(hypernym=e1, hyponym=e2)
+                    pred = self._taxonomy.hyponymy_score(hypernym=e1, hyponym=e2)
 
     def test_hyponymy_distance(self):
 
@@ -122,8 +123,19 @@ class BasicTaxonomyTestCases(unittest.TestCase):
 
         for e1, e2, dist_gt in test_cases:
             with self.subTest(e1=e1, e2=e2, dist=dist_gt):
-                pred = self._taxonomy.hyponymy_score_slow(hypernym=e1, hyponym=e2)
+                pred = self._taxonomy.hyponymy_score(hypernym=e1, hyponym=e2)
                 self.assertEqual(pred, dist_gt)
+
+    def test_hyponymy_distance_all(self):
+        # compare every possible combination with alternative implementation (=`hyponymy_score_slow()`)
+        nodes = tuple(self._taxonomy.dag.nodes)
+        for e1, e2 in itertools.product(nodes, nodes):
+            if e1 == e2:
+                continue
+            gt = self._taxonomy.hyponymy_score_slow(e1, e2)
+            pred = self._taxonomy.hyponymy_score(e1, e2)
+            with self.subTest(hypernym=e1, hyponym=e2):
+                self.assertEqual(gt, pred)
 
     def test_sample_non_hyponym_na(self):
 
