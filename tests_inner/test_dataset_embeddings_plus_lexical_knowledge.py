@@ -18,7 +18,7 @@ from dataset.transform import FieldTypeConverter
 from dataset.embeddings_plus_lexical_knowledge import WordEmbeddingsAndHyponymyDataset, WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation
 
 from config_files.word_embeddings import DIR_WORD_EMBEDDINGS
-from config_files.lexical_knowledge_datasets import DIR_LEXICAL_KNOWLEDGE
+from config_files.lexical_knowledge_datasets_nguyen import DIR_LEXICAL_KNOWLEDGE
 from config_files.toy_dataset_ver2 import DIR_TOY_DATASET
 
 _distance_str_to_float = FieldTypeConverter(dict_field_type_converter={"distance":np.float32})
