@@ -100,7 +100,7 @@ class BasicTaxonomy(object):
         return co_hyponyms
 
     @lru_cache(maxsize=1000000)
-    def depth(self, entity, offset=1, not_exists=None):
+    def depth(self, entity, offset=1, not_exists=None, **kwargs):
         graph = self.dag
 
         if entity not in graph:
@@ -139,7 +139,7 @@ class BasicTaxonomy(object):
 
         return dtype(dist)
 
-    def hyponymy_score(self, hypernym, hyponym, dtype: Type = float):
+    def hyponymy_score(self, hypernym, hyponym, dtype: Type = float, **kwargs):
         graph = self.dag
         if hypernym not in graph:
             raise ValueError(f"invalid node is specified: {hypernym}")
@@ -165,7 +165,7 @@ class BasicTaxonomy(object):
             dist = depth_lca - self.depth(hypernym)
         return dtype(dist)
 
-    def lowest_common_ancestor_depth(self, hypernym, hyponym, offset: int =1, dtype: Type = float):
+    def lowest_common_ancestor_depth(self, hypernym, hyponym, offset: int =1, dtype: Type = float, **kwargs):
         graph = self.dag
         if hypernym not in graph:
             raise ValueError(f"invalid node is specified: {hypernym}")
@@ -201,7 +201,7 @@ class BasicTaxonomy(object):
             non_candidates = self.hypernyms_and_hyponyms_and_self(entity)
         else:
             non_candidates = self.hyponyms_and_self(entity)
-        candidates = self._nodes if candidates is None else tuple(set(candidates).intersection(set(self._nodes)))
+        candidates = self.nodes if candidates is None else tuple(set(candidates).intersection(set(self.nodes)))
 
         if len(candidates) - len(non_candidates) <= 0:
             return []
@@ -220,7 +220,7 @@ class BasicTaxonomy(object):
 
     def sample_random_hyponyms(self, entity: str,
                                candidates: Optional[Iterable[str]] = None,
-                               size: int = 1, exclude_hypernyms: bool = True):
+                               size: int = 1, exclude_hypernyms: bool = True, **kwargs):
         lst_non_hyponymy_entities = self.sample_non_hyponymy(entity=entity, candidates=candidates,
                                                              size=size, exclude_hypernyms=exclude_hypernyms)
         lst_ret = [(entity, hyponym, self.hyponymy_score(entity, hyponym)) for hyponym in lst_non_hyponymy_entities]
@@ -229,7 +229,7 @@ class BasicTaxonomy(object):
 
     def sample_random_hypernyms(self, entity: str,
                                 candidates: Optional[Iterable[str]] = None,
-                                size: int = 1, exclude_hypernyms: bool = True):
+                                size: int = 1, exclude_hypernyms: bool = True, **kwargs):
 
         lst_non_hyponymy_entities = self.sample_non_hyponymy(entity=entity, candidates=candidates,
                                                              size=size, exclude_hypernyms=exclude_hypernyms)
@@ -250,7 +250,7 @@ class BasicTaxonomy(object):
 
         return ret
 
-    def sample_random_co_hyponyms(self, hypernym: str, hyponym: str, size: int = 1, break_probability: float = 0.8):
+    def sample_random_co_hyponyms(self, hypernym: str, hyponym: str, size: int = 1, break_probability: float = 0.8, **kwargs):
         graph = self.dag
         lst_co_hyponymy = []
         if (hypernym not in graph) or (hyponym not in graph):
@@ -267,11 +267,13 @@ class BasicTaxonomy(object):
     def _sample_random_co_hyponymy(self, hypernym: str, hyponym: str, break_probability: float) -> Tuple[str, str, float]:
         graph = self.dag
         shortest_path = self.hypernyms(hyponym) - self.hypernyms(hypernym)
-        children = tuple(n for n in graph.successors(hypernym) if n != hyponym)
+        non_candidates = self.hyponyms_and_self(hyponym)
+        children = set(graph.successors(hypernym)) - non_candidates
         hyponymy_score = None
 
         while len(children) > 0:
-            node = random.choice(children)
+            node = random.sample(children, 1)[0]
+            print(node)
             if node not in shortest_path:
                 hyponymy_score = -1 if hyponymy_score is None else hyponymy_score - 1
                 q = random.uniform(0,1)
@@ -279,7 +281,7 @@ class BasicTaxonomy(object):
                     break
 
             # update children
-            children = tuple(n for n in graph.successors(node) if n != hyponym)
+            children = set(graph.successors(hypernym)) - non_candidates
 
         if hyponymy_score is None:
             return None
@@ -327,53 +329,46 @@ class WordNetTaxonomy(BasicTaxonomy):
                 self._trainset_ancestors[entity_type][hyponym].add(hypernym)
                 self._trainset_descendants[entity_type][hypernym].add(hyponym)
 
-    @lru_cache(10000)
-    def hypernyms(self, entity, part_of_speech):
-        self.activate_entity_type(entity_type=part_of_speech)
-        return super().hypernyms(entity)
-
-    @lru_cache(10000)
-    def hyponyms(self, entity, part_of_speech):
-        self.activate_entity_type(entity_type=part_of_speech)
-        return super().hyponyms(entity)
-
-    def depth(self, entity, part_of_speech, offset=1, not_exists=None):
-        self.activate_entity_type(entity_type=part_of_speech)
+    def depth(self, entity, offset=1, not_exists=None, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
         return super().depth(entity, offset, not_exists)
 
-    def hyponymy_score_slow(self, hypernym, hyponym, part_of_speech, dtype: Type = float, not_exists=None):
-        self.activate_entity_type(entity_type=part_of_speech)
+    def hyponymy_score_slow(self, hypernym, hyponym, dtype: Type = float, not_exists=None, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
         if not nx.is_directed_acyclic_graph(self.dag):
             raise NotImplementedError(f"you can't use this method.")
         return super().hyponymy_score_slow(hypernym, hyponym, dtype)
 
-    def hyponymy_score(self, hypernym, hyponym, part_of_speech, dtype: Type = float, not_exists=None):
-        self.activate_entity_type(entity_type=part_of_speech)
+    def hyponymy_score(self, hypernym, hyponym, dtype: Type = float, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
         return super().hyponymy_score(hypernym, hyponym, dtype)
 
-    def sample_non_hyponymy(self, entity, part_of_speech, candidates: Optional[Iterable[str]] = None, size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
-        self.activate_entity_type(entity_type=part_of_speech)
-        return super().sample_non_hyponymy(entity, candidates, size, exclude_hypernyms)
+    def sample_random_hypernyms(self, hyponym, candidates: Optional[Iterable[str]] = None,
+                                size: int = 1, exclude_hypernyms: bool = True, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
+        return super().sample_random_hypernyms(hyponym, candidates, size, exclude_hypernyms)
 
-    def sample_random_hyponyms(self, hypernym, part_of_speech, candidates: Optional[Iterable[str]] = None,
-                               size: int = 1, exclude_hypernyms: bool = True):
-        self.activate_entity_type(entity_type=part_of_speech)
+    def sample_random_hyponyms(self, hypernym, candidates: Optional[Iterable[str]] = None,
+                               size: int = 1, exclude_hypernyms: bool = True, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
         return super().sample_random_hyponyms(hypernym, candidates, size, exclude_hypernyms)
 
-    def sample_random_co_hyponyms(self, hypernym: str, hyponym: str, part_of_speech: str, size: int = 1, break_probability: float = 0.5):
-        self.activate_entity_type(entity_type=part_of_speech)
+    def sample_random_co_hyponyms(self, hypernym: str, hyponym: str, size: int = 1, break_probability: float = 0.5, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
         return super().sample_random_co_hyponyms(hypernym, hyponym, size, break_probability)
 
     @property
-    def active_entity_type(self):
+    def ACTIVE_ENTITY_TYPE(self):
         return self._active_entity_type
 
-    def activate_entity_type(self, entity_type):
-        self._active_entity_type = entity_type
+    @ACTIVE_ENTITY_TYPE.setter
+    def ACTIVE_ENTITY_TYPE(self, value):
+        if value is not None:
+            self._active_entity_type = value
 
     @property
     def dag(self):
-        return self._dag.get(self.active_entity_type, self._dag)
+        return self._dag.get(self.ACTIVE_ENTITY_TYPE, self._dag)
 
     @property
     def entity_types(self):
@@ -381,11 +376,15 @@ class WordNetTaxonomy(BasicTaxonomy):
 
     @property
     def trainset_ancestors(self):
-        return self._trainset_ancestors.get(self.active_entity_type, self._trainset_ancestors)
+        return self._trainset_ancestors.get(self.ACTIVE_ENTITY_TYPE, self._trainset_ancestors)
+
+    @property
+    def trainset_descendants(self):
+        return self._trainset_descendants.get(self.ACTIVE_ENTITY_TYPE, self._trainset_descendants)
 
     @property
     def nodes(self):
-        return self._nodes.get(self.active_entity_type, self._nodes)
+        return self._nodes.get(self.ACTIVE_ENTITY_TYPE, self._nodes)
 
 
 class SynsetAwareWordnetTaxonomy(WordNetTaxonomy):
@@ -423,6 +422,6 @@ class SynsetAwareWordnetTaxonomy(WordNetTaxonomy):
         return entity.split(self._SEPARATOR)
 
     def search_entities_by_lemma(self, lemma: str, part_of_speech: str):
-        self.activate_entity_type(entity_type=part_of_speech)
+        self.ACTIVE_ENTITY_TYPE = part_of_speech
         key = self._SEPARATOR + lemma
         return {entity for entity in self.nodes if entity.endswith(key)}
