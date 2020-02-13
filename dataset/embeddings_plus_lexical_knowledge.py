@@ -78,15 +78,16 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
 
         # take tokens from hyponymy pairs
         set_tokens = set()
-        for hyponymy in batch_hyponymy:
-            set_tokens.add(hyponymy["hyponym"])
-            set_tokens.add(hyponymy["hypernym"])
+        iter_hyponyms = (hyponymy["hyponym"] for hyponymy in batch_hyponymy)
+        iter_hypernyms = (hyponymy["hypernym"] for hyponymy in batch_hyponymy)
+        set_tokens.update(iter_hyponyms)
+        set_tokens.update(iter_hypernyms)
 
         # take remaining tokens randomly from word embeddings dataset vocabulary
         n_diff = self._embedding_batch_size - len(set_tokens)
         if n_diff > 0:
-            lst_index = np.random.choice(range(self._n_embeddings), size=n_diff, replace=False)
-            lst_tokens_from_embeddings = [self._word_embeddings_dataset.index_to_entity(idx) for idx in lst_index]
+            lst_index = np.random.randint(low=0, high=self._n_embeddings, size=n_diff)
+            lst_tokens_from_embeddings = self._word_embeddings_dataset.indices_to_entities(lst_index)
             # add to token set
             set_tokens.update(lst_tokens_from_embeddings)
         else:
@@ -97,15 +98,13 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
         token_to_index = {token:idx for idx, token in enumerate(lst_tokens)}
 
         # create embeddings
-        mat_embeddings = np.stack([self._word_embeddings_dataset[token]["embedding"] for token in lst_tokens])
+        mat_embeddings = np.stack(tuple(self._word_embeddings_dataset[token]["embedding"] for token in lst_tokens))
 
         # create hyponymy relations
-        lst_hyponymy_relation = []
-        for hyponymy in batch_hyponymy:
-            idx_hypo = token_to_index[hyponymy["hyponym"]]
-            idx_hyper = token_to_index[hyponymy["hypernym"]]
-            distance = hyponymy["distance"]
-            lst_hyponymy_relation.append((idx_hyper, idx_hypo, distance))
+        iter_idx_hypo = map(token_to_index.get, (hyponymy["hyponym"] for hyponymy in batch_hyponymy))
+        iter_idx_hyper = map(token_to_index.get, (hyponymy["hypernym"] for hyponymy in batch_hyponymy))
+        iter_hyponymy_score = (hyponymy["distance"] for hyponymy in batch_hyponymy)
+        lst_hyponymy_relation = [tup for tup in zip(iter_idx_hyper, iter_idx_hypo, iter_hyponymy_score)]
 
         # create entity depth information
         if self._entity_depth_information is not None:
