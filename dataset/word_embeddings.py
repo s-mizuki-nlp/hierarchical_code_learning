@@ -47,7 +47,7 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
         return self._idx_to_word[index]
 
     def indices_to_entities(self, indices: Iterable[int]):
-        return list(map(self._idx_to_word.get, indices))
+        return [self._idx_to_word[index] for index in indices]
 
     @abstractmethod
     def vocab(self) -> Collection[str]:
