@@ -253,6 +253,10 @@ class SupervisedTrainer(UnsupervisedTrainer):
 
         # forward computation
         t_x = data_batch["embedding"]
+
+        # DEBUG
+        # return {"loss":torch.tensor(0.0, requires_grad=True), "log":{}}
+
         t_latent_code, t_code_prob, t_x_dash = self._model.forward(t_x)
 
         # (required) reconstruction loss
