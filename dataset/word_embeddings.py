@@ -65,9 +65,6 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
             return ("entity", "embedding")
 
     def __getitem__(self, key: Union[torch.Tensor, int, str]):
-        if torch.is_tensor(key):
-            key = key.tolist()
-
         if isinstance(key, int):
             word = self._idx_to_word[key]
         elif isinstance(key, str):

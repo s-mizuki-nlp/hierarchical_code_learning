@@ -98,7 +98,9 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
         token_to_index = {token:idx for idx, token in enumerate(lst_tokens)}
 
         # create embeddings
-        mat_embeddings = np.stack(tuple(self._word_embeddings_dataset[token]["embedding"] for token in lst_tokens))
+        embeddings = tuple(self._word_embeddings_dataset[token]["embedding"] for token in lst_tokens)
+        n_dim = self._word_embeddings_dataset.n_dim
+        mat_embeddings = np.concatenate(embeddings, axis=0).reshape(-1, n_dim)
 
         # create hyponymy relations
         iter_idx_hypo = map(token_to_index.get, (hyponymy["hyponym"] for hyponymy in batch_hyponymy))
