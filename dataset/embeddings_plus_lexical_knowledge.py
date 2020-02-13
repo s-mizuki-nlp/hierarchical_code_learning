@@ -112,8 +112,9 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
             for hyponymy in batch_hyponymy:
                 idx_hypo = token_to_index[hyponymy["hyponym"]]
                 idx_hyper = token_to_index[hyponymy["hypernym"]]
-                depth_hypo = self._taxonomy.depth(hyponymy["hyponym"], offset=1)
-                depth_hyper = self._taxonomy.depth(hyponymy["hypernym"], offset=1)
+                pos = hyponymy.get("pos", None)
+                depth_hypo = self._taxonomy.depth(hyponymy["hyponym"], offset=1, part_of_speech=pos)
+                depth_hyper = self._taxonomy.depth(hyponymy["hypernym"], offset=1, part_of_speech=pos)
                 if self._entity_depth_information in ("both","hypernym"):
                     if depth_hyper is not None:
                         lst_entity_depth_info.append((idx_hyper, depth_hyper))
@@ -128,7 +129,8 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
                     if (depth_hyper is not None) and (depth_hypo is not None):
                         depth_lca = self._taxonomy.lowest_common_ancestor_depth(hypernym=hyponymy["hypernym"],
                                                                                 hyponym=hyponymy["hyponym"],
-                                                                                offset=1)
+                                                                                offset=1,
+                                                                                part_of_speech=pos)
                         lst_entity_depth_info.append((idx_hyper, idx_hypo, depth_lca))
 
         batch = {
@@ -279,26 +281,23 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         for hyponymy in batch_hyponymy:
             hyper = hyponymy["hypernym"]
             hypo = hyponymy["hyponym"]
+            pos = hyponymy.get("pos", None)
             lst_tup_sample_b = []
-            if isinstance(self._taxonomy, BasicTaxonomy):
-                if "hyponym" in self._non_hyponymy_relation_target:
-                    lst_tup_sample_b_swap_hypo = self._taxonomy.sample_random_hyponyms(entity=hyper, candidates=set_candidates, size=size_per_sample,
-                                                                exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation)
-                    lst_tup_sample_b.extend(lst_tup_sample_b_swap_hypo)
-                if "hypernym" in self._non_hyponymy_relation_target:
-                    lst_tup_sample_b_swap_hyper = self._taxonomy.sample_random_hypernyms(entity=hypo, candidates=set_candidates, size=size_per_sample,
-                                                                exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation)
-                    lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper)
-                if "co-hyponym" in self._non_hyponymy_relation_target:
-                    lst_tup_sample_b_swap_hyper_to_co_hyper = self._taxonomy.sample_random_co_hyponyms(hypernym=hyper, hyponym=hypo,
-                                                                                                       size=size_per_sample, break_probability=0.8)
-                    lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper_to_co_hyper)
-
-            elif isinstance(self._taxonomy, WordNetTaxonomy):
-                # ToDo: implement wordnet-specific taxonomy class
-                synset_hyper = hyponymy["synset_hypernym"]
-                synset_hypo = hyponymy["synset_hyponym"]
-                raise NotImplementedError("not yet implemented.")
+            if "hyponym" in self._non_hyponymy_relation_target:
+                lst_tup_sample_b_swap_hypo = self._taxonomy.sample_random_hyponyms(entity=hyper, candidates=set_candidates, size=size_per_sample,
+                                                            exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation,
+                                                            part_of_speech=pos)
+                lst_tup_sample_b.extend(lst_tup_sample_b_swap_hypo)
+            if "hypernym" in self._non_hyponymy_relation_target:
+                lst_tup_sample_b_swap_hyper = self._taxonomy.sample_random_hypernyms(entity=hypo, candidates=set_candidates, size=size_per_sample,
+                                                            exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation,
+                                                            part_of_speech=pos)
+                lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper)
+            if "co-hyponym" in self._non_hyponymy_relation_target:
+                lst_tup_sample_b_swap_hyper_to_co_hyper = self._taxonomy.sample_random_co_hyponyms(hypernym=hyper, hyponym=hypo,
+                                                                                                   size=size_per_sample, break_probability=0.8,
+                                                                                                   part_of_speech=pos)
+                lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper_to_co_hyper)
 
             # if distance is specified, then overwrite all samples with specified value.
             if self._non_hyponymy_relation_distance is not None:
@@ -321,11 +320,14 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             hyper_rev = hyponymy["hyponym"]
             hypo_rev = hyponymy["hypernym"]
             dist_orig = hyponymy["distance"]
+            pos = hyponymy.get("pos", None)
 
             if dist_orig > 0:
                 dist_rev = - dist_orig
             else:
-                dist_rev = self._taxonomy.hyponymy_score(hypernym=hyper_rev, hyponym=hypo_rev)
+                dist_rev = self._taxonomy.hyponymy_score(hypernym=hyper_rev, hyponym=hypo_rev, part_of_speech=pos)
+                if dist_rev is None:
+                    continue
 
             d = {
                 "hyponym":hypo_rev,

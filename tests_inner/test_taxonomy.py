@@ -199,7 +199,7 @@ class WordNetTaxonomyTestCases(unittest.TestCase):
     def test_sample_random_hypernyms_noun(self):
         entity = "cat"
         pos = "n"
-        pred = self._taxonomy.sample_random_hypernyms(hyponym=entity, part_of_speech=pos, exclude_hypernyms=True)
+        pred = self._taxonomy.sample_random_hypernyms(entity=entity, part_of_speech=pos, exclude_hypernyms=True)
 
         self.assertEqual(len(pred), 1)
         self.assertEqual(self._taxonomy.ACTIVE_ENTITY_TYPE, pos)
@@ -214,7 +214,7 @@ class WordNetTaxonomyTestCases(unittest.TestCase):
     def test_sample_random_hyponyms_noun(self):
         entity = "cat"
         pos = "n"
-        pred = self._taxonomy.sample_random_hyponyms(hypernym=entity, part_of_speech=pos, exclude_hypernyms=True)
+        pred = self._taxonomy.sample_random_hyponyms(entity=entity, part_of_speech=pos, exclude_hypernyms=True)
 
         self.assertEqual(len(pred), 1)
         self.assertEqual(self._taxonomy.ACTIVE_ENTITY_TYPE, pos)

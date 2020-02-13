@@ -16,6 +16,8 @@ import random
 
 from .lexical_knowledge import HyponymyDataset
 
+_DEBUG_MODE = False
+
 class BasicTaxonomy(object):
 
     def __init__(self, hyponymy_dataset: HyponymyDataset):
@@ -141,10 +143,11 @@ class BasicTaxonomy(object):
 
     def hyponymy_score(self, hypernym, hyponym, dtype: Type = float, **kwargs):
         graph = self.dag
-        if hypernym not in graph:
-            raise ValueError(f"invalid node is specified: {hypernym}")
-        if hyponym not in graph:
-            raise ValueError(f"invalid node is specified: {hyponym}")
+        if (hypernym not in graph) or (hyponym not in graph):
+            if _DEBUG_MODE:
+                raise ValueError(f"invalid node is specified: {hypernym}, {hyponym}")
+            else:
+                return None
 
         ancestors_hypernym = self.dag_ancestors(hypernym)
         ancestors_hyponym = self.dag_ancestors(hyponym)
@@ -332,6 +335,10 @@ class WordNetTaxonomy(BasicTaxonomy):
         self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
         return super().depth(entity, offset, not_exists)
 
+    def lowest_common_ancestor_depth(self, hypernym, hyponym, offset: int =1, dtype: Type = float, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
+        return super().lowest_common_ancestor_depth(hypernym, hyponym, offset, dtype)
+
     def hyponymy_score_slow(self, hypernym, hyponym, dtype: Type = float, not_exists=None, **kwargs):
         self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
         if not nx.is_directed_acyclic_graph(self.dag):
@@ -342,15 +349,15 @@ class WordNetTaxonomy(BasicTaxonomy):
         self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
         return super().hyponymy_score(hypernym, hyponym, dtype)
 
-    def sample_random_hypernyms(self, hyponym, candidates: Optional[Iterable[str]] = None,
+    def sample_random_hypernyms(self, entity: str, candidates: Optional[Iterable[str]] = None,
                                 size: int = 1, exclude_hypernyms: bool = True, **kwargs):
         self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
-        return super().sample_random_hypernyms(hyponym, candidates, size, exclude_hypernyms)
+        return super().sample_random_hypernyms(entity, candidates, size, exclude_hypernyms)
 
-    def sample_random_hyponyms(self, hypernym, candidates: Optional[Iterable[str]] = None,
+    def sample_random_hyponyms(self, entity: str, candidates: Optional[Iterable[str]] = None,
                                size: int = 1, exclude_hypernyms: bool = True, **kwargs):
         self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
-        return super().sample_random_hyponyms(hypernym, candidates, size, exclude_hypernyms)
+        return super().sample_random_hyponyms(entity, candidates, size, exclude_hypernyms)
 
     def sample_random_co_hyponyms(self, hypernym: str, hyponym: str, size: int = 1, break_probability: float = 0.5, **kwargs):
         self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
