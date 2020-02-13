@@ -208,16 +208,20 @@ class BasicTaxonomy(object):
 
         if len(candidates) - len(non_candidates) <= 0:
             return []
+        elif len(non_candidates)/len(candidates) >= 0.9:
+            candidates = tuple(set(candidates) - non_candidates)
         elif len(candidates) < size:
             candidates = (candidates)*(math.ceil(size/len(candidates)))
 
         # sampling with replacement
         sampled = tuple()
-        while len(sampled) < size:
-            sampled_new = random.sample(candidates, size)
-            sampled_new = tuple(s for s in sampled_new if s not in non_candidates)
-            sampled = sampled + sampled_new
-        sampled = sampled[:size]
+        for rnd_idx in np.random.randint(low=0, high=len(candidates), size=size*20):
+            sampled_new = candidates[rnd_idx]
+            if sampled_new in non_candidates:
+                continue
+            sampled = sampled + (sampled_new,)
+            if len(sampled) >= size:
+                break
 
         return sampled
 
@@ -321,7 +325,7 @@ class WordNetTaxonomy(BasicTaxonomy):
 
         self._active_entity_type = None
         self._cache_root_nodes = {}
-        self._nodes = {entity_type:set(graph.nodes) for entity_type, graph in self._dag.items()}
+        self._nodes = {entity_type:tuple(graph.nodes) for entity_type, graph in self._dag.items()}
 
     def record_ancestors_and_descendants(self, dict_iter_hyponymy_pairs):
         self._trainset_ancestors = defaultdict(lambda :defaultdict(set))
