@@ -16,9 +16,11 @@ import random
 
 from .lexical_knowledge import HyponymyDataset
 
-_DEBUG_MODE = False
+
 
 class BasicTaxonomy(object):
+
+    _DEBUG_MODE = False
 
     def __init__(self, hyponymy_dataset: HyponymyDataset):
 
@@ -156,7 +158,7 @@ class BasicTaxonomy(object):
     def hyponymy_score(self, hypernym, hyponym, dtype: Type = float, **kwargs):
         graph = self.dag
         if (hypernym not in graph) or (hyponym not in graph):
-            if _DEBUG_MODE:
+            if self._DEBUG_MODE:
                 raise ValueError(f"invalid node is specified: {hypernym}, {hyponym}")
             else:
                 return None

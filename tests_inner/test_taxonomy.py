@@ -62,6 +62,7 @@ class BasicTaxonomyTestCases(unittest.TestCase):
         assert len(hyponymy_dataset) > 0
         tmp.close()
 
+        BasicTaxonomy._DEBUG_MODE = True
         taxonomy = BasicTaxonomy(hyponymy_dataset=hyponymy_dataset)
         cls._taxonomy = taxonomy
 
@@ -282,3 +283,21 @@ class WordNetTaxonomyTestCases(unittest.TestCase):
 
             with self.subTest(**dict_test):
                 self.assertEqual(pred, gt)
+
+    def test_cache_effect_depth(self):
+
+        # validate cache is part-of-speech sensitive
+        entity = "license"
+        depth_n = self._taxonomy.depth(entity=entity, part_of_speech="n")
+        depth_v = self._taxonomy.depth(entity=entity, part_of_speech="v")
+
+        self.assertNotEqual(depth_n, depth_v)
+
+    def test_cache_effect_hypernyms(self):
+
+        # validate cache is part-of-speech sensitive
+        entity = "license"
+        depth_n = self._taxonomy.hypernyms_and_hyponyms_and_self(entity=entity, part_of_speech="n")
+        depth_v = self._taxonomy.depth(entity=entity, part_of_speech="v")
+
+        self.assertNotEqual(depth_n, depth_v)
