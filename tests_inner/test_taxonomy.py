@@ -11,8 +11,10 @@ import unittest
 import networkx as nx
 import numpy as np
 from dataset.taxonomy import BasicTaxonomy, WordNetTaxonomy
-from dataset.lexical_knowledge import HyponymyDataset
+from dataset.lexical_knowledge import HyponymyDataset, WordNetHyponymyDataset
 from dataset.transform import FieldTypeConverter
+from config_files.lexical_knowledge_datasets_original import cfg_hyponymy_relation_datasets
+
 _distance_str_to_float = FieldTypeConverter(dict_field_type_converter={"distance":np.float32})
 
 class BasicTaxonomyTestCases(unittest.TestCase):
@@ -183,3 +185,100 @@ class BasicTaxonomyTestCases(unittest.TestCase):
             pred = self._taxonomy.sample_non_hyponymy(entity, size=100, exclude_hypernyms=True)
             with self.subTest(hypernym=entity):
                 self.assertTrue(set(pred).issubset(gt))
+
+
+class WordNetTaxonomyTestCases(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls) -> None:
+
+        dataset = WordNetHyponymyDataset(**cfg_hyponymy_relation_datasets["WordNet-hyponymy-noun-verb"])
+        taxonomy = WordNetTaxonomy(hyponymy_dataset=dataset)
+        cls._taxonomy = taxonomy
+
+    def test_sample_random_hypernyms_noun(self):
+        entity = "cat"
+        pos = "n"
+        pred = self._taxonomy.sample_random_hypernyms(hyponym=entity, part_of_speech=pos, exclude_hypernyms=True)
+
+        self.assertEqual(len(pred), 1)
+        self.assertEqual(self._taxonomy.ACTIVE_ENTITY_TYPE, pos)
+
+        hypernym, hyponym, score = pred[0]
+        non_candidates = self._taxonomy.hypernyms_and_hyponyms_and_self(entity=entity)
+
+        self.assertTrue(hypernym not in non_candidates)
+        self.assertEqual(hyponym, entity)
+        self.assertLess(score, 0)
+
+    def test_sample_random_hyponyms_noun(self):
+        entity = "cat"
+        pos = "n"
+        pred = self._taxonomy.sample_random_hyponyms(hypernym=entity, part_of_speech=pos, exclude_hypernyms=True)
+
+        self.assertEqual(len(pred), 1)
+        self.assertEqual(self._taxonomy.ACTIVE_ENTITY_TYPE, pos)
+
+        hypernym, hyponym, score = pred[0]
+        non_candidates = self._taxonomy.hypernyms_and_hyponyms_and_self(entity=entity)
+
+        self.assertTrue(hyponym not in non_candidates)
+        self.assertEqual(hypernym, entity)
+        self.assertLess(score, 0)
+
+    def test_sample_random_co_hyponyms_noun(self):
+        hypernym = "carnivore"
+        hyponym = "cat"
+        pos = "n"
+        size = 10
+        lst_pred = self._taxonomy.sample_random_co_hyponyms(hypernym=hypernym, hyponym=hyponym, part_of_speech=pos, size=size)
+
+        self.assertEqual(len(lst_pred), size)
+        self.assertEqual(self._taxonomy.ACTIVE_ENTITY_TYPE, pos)
+
+        non_candidates = self._taxonomy.hypernyms_and_hyponyms_and_self(entity=hyponym)
+        for r_hypernym, r_hyponym, score in lst_pred:
+            gt = self._taxonomy.hyponymy_score(hypernym=r_hypernym, hyponym=r_hyponym)
+
+            with self.subTest(hypernym=r_hypernym, hyponym=r_hyponym):
+                self.assertTrue(r_hypernym not in non_candidates)
+                self.assertEqual(r_hyponym, hyponym)
+                self.assertEqual(score, gt)
+
+    def test_depth_noun(self):
+        entity = "cat"
+        pos = "n"
+        pred = self._taxonomy.depth(entity=entity, part_of_speech=pos)
+        gt = 10
+        self.assertTrue(pred, gt)
+
+    def test_hyponymy_scores(self):
+        lst_tests = [
+            {
+                "hypernym":"carnivore",
+                "hyponym":"cat",
+                "pos":"n",
+                "score":2
+            },
+            {
+                "hypernym":"feel",
+                "hyponym":"exuberate",
+                "pos":"v",
+                "score":3
+            },
+            {
+                "hypernym":"regret",
+                "hyponym":"exuberate",
+                "pos":"v",
+                "score":-1
+            }
+        ]
+
+        for dict_test in lst_tests:
+            gt = dict_test.pop("score")
+            pos = dict_test.pop("pos")
+            self._taxonomy.ACTIVE_ENTITY_TYPE = pos
+            pred = self._taxonomy.hyponymy_score(**dict_test)
+
+            with self.subTest(**dict_test):
+                self.assertEqual(pred, gt)
