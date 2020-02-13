@@ -87,9 +87,12 @@ class BasicTaxonomy(object):
         self._cache_root_nodes[hash_value] = root_nodes
         return root_nodes
 
-    @lru_cache(maxsize=1000000)
     def dag_ancestors(self, entity):
-        return nx.ancestors(self.dag, entity)
+        return self._dag_ancestors(entity, self.dag)
+
+    @lru_cache(maxsize=1000000)
+    def _dag_ancestors(self, entity, graph):
+        return nx.ancestors(graph, entity)
 
     def hypernyms(self, entity):
         return self.dag_ancestors(entity).union(self.trainset_ancestors.get(entity, set()))
@@ -97,12 +100,18 @@ class BasicTaxonomy(object):
     def hyponyms(self, entity):
         return nx.descendants(self.dag, entity).union(self.trainset_descendants.get(entity, set()))
 
-    @lru_cache(maxsize=1000000)
     def hypernyms_and_hyponyms_and_self(self, entity):
-        return self.hyponyms(entity) | self.hypernyms(entity) | {entity}
+        return self._hypernyms_and_hyponyms_and_self(entity, self.dag)
 
     @lru_cache(maxsize=1000000)
+    def _hypernyms_and_hyponyms_and_self(self, entity, graph):
+        return self.hyponyms(entity) | self.hypernyms(entity) | {entity}
+
     def hyponyms_and_self(self, entity):
+        return self._hyponyms_and_self(entity, self.dag)
+
+    @lru_cache(maxsize=1000000)
+    def _hyponyms_and_self(self, entity, graph):
         return self.hyponyms(entity) | {entity}
 
     def co_hyponyms(self, entity):
@@ -115,10 +124,11 @@ class BasicTaxonomy(object):
         co_hyponyms = branches - self.hypernyms_and_hyponyms_and_self(entity)
         return co_hyponyms
 
-    @lru_cache(maxsize=1000000)
     def depth(self, entity, offset=1, not_exists=None, **kwargs):
-        graph = self.dag
+        return self._depth(entity, self.dag, offset, not_exists)
 
+    @lru_cache(maxsize=1000000)
+    def _depth(self, entity, graph, offset=1, not_exists=None):
         if entity not in graph:
             return not_exists
 
