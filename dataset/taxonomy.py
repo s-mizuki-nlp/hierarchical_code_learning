@@ -27,6 +27,7 @@ class BasicTaxonomy(object):
         self.build_directed_acyclic_graph(iter_hyponymy_pairs)
         iter_hyponymy_pairs = ((record["hypernym"], record["hyponym"]) for record in hyponymy_dataset)
         self.record_ancestors_and_descendants(iter_hyponymy_pairs)
+        self._random_number_generator = self._random_number_generator_iterator(max_value=self.n_nodes_max)
 
     @property
     def dag(self):
@@ -35,6 +36,10 @@ class BasicTaxonomy(object):
     @property
     def nodes(self):
         return self._nodes
+
+    @property
+    def n_nodes_max(self):
+        return len(self.nodes)
 
     @property
     def trainset_ancestors(self):
@@ -63,6 +68,13 @@ class BasicTaxonomy(object):
         for hypernym, hyponym in iter_hyponymy_pairs:
             self._trainset_ancestors[hyponym].add(hypernym)
             self._trainset_descendants[hypernym].add(hyponym)
+
+    def _random_number_generator_iterator(self, max_value: int):
+        seeds = np.arange(max_value)
+        while True:
+            np.random.shuffle(seeds)
+            for idx in seeds:
+                yield idx
 
     def _find_root_nodes(self, graph) -> Set[str]:
         hash_value = graph.__hash__() + graph.number_of_nodes()
@@ -215,8 +227,9 @@ class BasicTaxonomy(object):
 
         # sampling with replacement
         sampled = tuple()
-        for rnd_idx in np.random.randint(low=0, high=len(candidates), size=size*20):
-            sampled_new = candidates[rnd_idx]
+        n_candidates = len(candidates)
+        for rnd_idx in self._random_number_generator:
+            sampled_new = candidates[rnd_idx % n_candidates]
             if sampled_new in non_candidates:
                 continue
             sampled = sampled + (sampled_new,)
@@ -313,6 +326,7 @@ class WordNetTaxonomy(BasicTaxonomy):
 
         self.build_directed_acyclic_graph(dict_iter_hyponymy_pairs)
         self.record_ancestors_and_descendants(dict_iter_trainset_pairs)
+        self._random_number_generator = self._random_number_generator_iterator(max_value=self.n_nodes_max)
 
     def build_directed_acyclic_graph(self, dict_iter_hyponymy_pairs: Dict[str, Iterable[Tuple[str, str]]]):
         self._dag = {}
@@ -396,6 +410,9 @@ class WordNetTaxonomy(BasicTaxonomy):
     def nodes(self):
         return self._nodes.get(self.ACTIVE_ENTITY_TYPE, self._nodes)
 
+    @property
+    def n_nodes_max(self):
+        return max(map(len, self._nodes.values()))
 
 class SynsetAwareWordnetTaxonomy(WordNetTaxonomy):
 
