@@ -301,12 +301,11 @@ class BasicTaxonomy(object):
         shortest_path = self.hypernyms(hyponym) - self.hypernyms(hypernym)
         non_candidates = self.hyponyms_and_self(hyponym)
         children = set(graph.successors(hypernym)) - non_candidates
-        hyponymy_score = None
+        node = None
 
         while len(children) > 0:
             node = random.sample(children, 1)[0]
             if node not in shortest_path:
-                hyponymy_score = -1 if hyponymy_score is None else hyponymy_score - 1
                 q = random.uniform(0,1)
                 if q <= break_probability:
                     break
@@ -314,9 +313,10 @@ class BasicTaxonomy(object):
             # update children
             children = set(graph.successors(node)) - non_candidates
 
-        if hyponymy_score is None:
+        if node is None:
             return None
         else:
+            hyponymy_score = self.hyponymy_score(hypernym=node, hyponym=hyponym)
             return (node, hyponym, hyponymy_score)
 
 
