@@ -273,7 +273,6 @@ class BasicTaxonomy(object):
 
         while len(children) > 0:
             node = random.sample(children, 1)[0]
-            print(node)
             if node not in shortest_path:
                 hyponymy_score = -1 if hyponymy_score is None else hyponymy_score - 1
                 q = random.uniform(0,1)
@@ -281,7 +280,7 @@ class BasicTaxonomy(object):
                     break
 
             # update children
-            children = set(graph.successors(hypernym)) - non_candidates
+            children = set(graph.successors(node)) - non_candidates
 
         if hyponymy_score is None:
             return None
