@@ -2,7 +2,7 @@
 # -*- coding:utf-8 -*-
 
 import io, os, json
-from typing import Union, Collection, Optional, Dict, Any
+from typing import Union, Collection, Optional, Dict, Any, Iterable
 
 from abc import ABCMeta, abstractmethod
 
@@ -45,6 +45,9 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
 
     def index_to_entity(self, index: int):
         return self._idx_to_word[index]
+
+    def indices_to_entities(self, indices: Iterable[int]):
+        return list(map(self._idx_to_word.get, indices))
 
     @abstractmethod
     def vocab(self) -> Collection[str]:
