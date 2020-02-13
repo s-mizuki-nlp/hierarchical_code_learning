@@ -297,7 +297,9 @@ class WordNetTaxonomyTestCases(unittest.TestCase):
 
         # validate cache is part-of-speech sensitive
         entity = "license"
-        depth_n = self._taxonomy.hypernyms_and_hyponyms_and_self(entity=entity, part_of_speech="n")
-        depth_v = self._taxonomy.depth(entity=entity, part_of_speech="v")
+        self._taxonomy.ACTIVE_ENTITY_TYPE = "n"
+        hyper_hypo_n = self._taxonomy.hypernyms_and_hyponyms_and_self(entity=entity)
+        self._taxonomy.ACTIVE_ENTITY_TYPE = "v"
+        hyper_hypo_v = self._taxonomy.hypernyms_and_hyponyms_and_self(entity=entity)
 
-        self.assertNotEqual(depth_n, depth_v)
+        self.assertNotEqual(hyper_hypo_n, hyper_hypo_v)
