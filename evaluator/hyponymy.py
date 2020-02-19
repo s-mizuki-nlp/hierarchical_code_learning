@@ -106,7 +106,6 @@ class SoftHyponymyPredictor(object):
             self._threshold_hyponymy_score = threshold_opt
 
     def calc_soft_hyponymy_score(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like):
-        # ToDo: we may need to deal with the batch dimension.
         t_code_prob_x = self._numpy_to_tensor(mat_code_prob_x)
         t_code_prob_y = self._numpy_to_tensor(mat_code_prob_y)
         s_xy = self._auxiliary.calc_soft_hyponymy_score(t_code_prob_x, t_code_prob_y).item()
@@ -228,3 +227,11 @@ class SoftHyponymyPredictor(object):
             "soft_hyponymy_score":self._threshold_hyponymy_score
         }
         return ret
+
+    @property
+    def CLASS_LABELS_DIRECTIONALITY(self):
+        return {"x","y"}
+
+    @property
+    def CLASS_LABELS_RELATION(self):
+        return {"hyponymy","reverse-hyponymy","other"}

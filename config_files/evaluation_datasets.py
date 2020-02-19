@@ -41,6 +41,27 @@ cfg_evaluation_datasets_ranking_retrieval = {
     }
 }
 
+
+def _relation_to_direction_class(sample):
+    class_mapper = {"hyper":"x"}
+    sample["class"] = class_mapper[sample["relation"]]
+    return sample
+
+def _relation_to_binary_class_wbless(sample):
+    class_mapper = {"hyper":True, "other":False}
+    sample["class"] = class_mapper.get(sample["relation"], False)
+    return sample
+
+def _relation_to_binary_class_entailment(sample):
+    class_mapper = {"hyper":True, "random":False}
+    sample["class"] = class_mapper.get(sample["relation"], False)
+    return sample
+
+def _relation_to_three_classes(sample):
+    class_mapper = {"hyper":"hyponymy", "rhyper":"reverse-hyponymy", "other":"other"}
+    sample["class"] = class_mapper.get(sample["relation"], "other")
+    return sample
+
 # evaluation dataset for classification task
 # ENTAILMENT dataset は optional. 除外してもよい
 cfg_evaluation_datasets_classification = {
@@ -49,6 +70,7 @@ cfg_evaluation_datasets_classification = {
         "header": False,
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3},
+        "transform":_relation_to_direction_class,
         "description": "BLESS-hyponymy dataset: directionality",
     },
     "WBLESS": {
@@ -56,6 +78,7 @@ cfg_evaluation_datasets_classification = {
         "header": False,
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3},
+        "transform":_relation_to_binary_class_wbless,
         "description": "Weeds-BLESS dataset: hyponymy or not",
     },
     "ENTAILMENT": {
@@ -63,6 +86,7 @@ cfg_evaluation_datasets_classification = {
         "header": False,
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3},
+        "transform":_relation_to_binary_class_entailment,
         "description": "ENTAILMENT dataset[Baroni+ 2012]: hyponymy or not",
     },
     "BIBLESS": {
