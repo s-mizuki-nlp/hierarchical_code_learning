@@ -98,7 +98,10 @@ class CodeLengthEvaluator(BaseEvaluator):
         dict_ret = {}
 
         for metric_name, f_metric in evaluator.items():
-            dict_ret[metric_name] = f_metric(v_code_length_gt, v_code_length, **kwargs_for_metric_function)
+            try:
+                dict_ret[metric_name] = f_metric(v_code_length_gt, v_code_length, **kwargs_for_metric_function)
+            except:
+                dict_ret[metric_name] = None
 
         return v_code_length_gt, v_code_length, dict_ret
 
@@ -150,7 +153,10 @@ class HyponymyDirectionalityEvaluator(BaseEvaluator):
         # calculate metrics
         dict_ret = {}
         for metric_name, f_metric in evaluator.items():
-            dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
+            try:
+                dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
+            except:
+                dict_ret[metric_name] = None
 
         return lst_gt, lst_pred, dict_ret
 
@@ -231,12 +237,15 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
         # calculate metrics
         dict_ret = {}
         for metric_name, f_metric in evaluator.items():
-            if metric_name == "accuracy_by_category":
-                dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
-            elif metric_name in ("area_under_curve", "optimal_threshold"):
-                dict_ret[metric_name] = f_metric(lst_gt, lst_score)
-            else:
-                dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
+            try:
+                if metric_name == "accuracy_by_category":
+                    dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
+                elif metric_name in ("area_under_curve", "optimal_threshold"):
+                    dict_ret[metric_name] = f_metric(lst_gt, lst_score)
+                else:
+                    dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
+            except:
+                dict_ret[metric_name] = None
 
         return lst_gt, lst_pred, dict_ret
 
@@ -328,13 +337,16 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
         # calculate metrics
         dict_ret = {}
         for metric_name, f_metric in evaluator.items():
-            if metric_name == "accuracy_by_category":
-                dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
-            elif metric_name in ("area_under_curve", "optimal_threshold_hyponymy_propensity_score"):
-                lst_gt_binary = [gt in ("hyponymy","reverse-hyponymy") for gt in lst_gt]
-                dict_ret[metric_name] = f_metric(lst_gt_binary, lst_score)
-            else:
-                dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
+            try:
+                if metric_name == "accuracy_by_category":
+                    dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
+                elif metric_name in ("area_under_curve", "optimal_threshold_hyponymy_propensity_score"):
+                    lst_gt_binary = [gt in ("hyponymy","reverse-hyponymy") for gt in lst_gt]
+                    dict_ret[metric_name] = f_metric(lst_gt_binary, lst_score)
+                else:
+                    dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
+            except:
+                dict_ret[metric_name] = None
 
         return lst_gt, lst_pred, dict_ret
 
