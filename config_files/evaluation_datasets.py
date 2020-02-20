@@ -94,6 +94,7 @@ cfg_evaluation_datasets_classification = {
         "header": False,
         "delimiter": "\t",
         "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3},
+        "transform":_relation_to_three_classes,
         "description": "Weeds-BLESS relabeled dataset: hyponymy, reverse-hyponymy or other",
     }
 }
