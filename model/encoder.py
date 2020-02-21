@@ -51,7 +51,12 @@ class SimpleEncoder(nn.Module):
 class CodeLengthAwareEncoder(SimpleEncoder):
 
     _kwargs_stacked_lstm_layer = {
-        "time_distributed":True
+        "time_distributed":True,
+        "n_layer":1
+    }
+    _kwargs_multi_dense_layer = {
+        "n_layer":3,
+        "activation_function":F.relu,
     }
 
     def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int,
@@ -105,11 +110,10 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         elif MultiDenseLayer in inspect.getmro(self._internal_layer_class):
             lst_layers = []
             for _ in range(self._n_digits):
-                l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=3, activation_function=F.relu,
-                                    bias=False)
+                l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, bias=False, **self._kwargs_multi_dense_layer)
                 lst_layers.append(l)
         elif StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
-            l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_layer=1, n_seq_len=self._n_digits,
+            l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_seq_len=self._n_digits,
                                  **self._kwargs_stacked_lstm_layer)
             if self._n_ary_internal == self._n_ary:
                 init_code_length = kwargs_for_code_length_predictor.get("init_code_length", None)
