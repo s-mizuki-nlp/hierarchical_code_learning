@@ -279,7 +279,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             set_candidates = None
 
         if isinstance(self._taxonomy, WordNetTaxonomy):
-            break_probability = 0.5
+            break_probability = 0.8
         else:
             break_probability = 0.8
 
