@@ -278,6 +278,11 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         else:
             set_candidates = None
 
+        if isinstance(self._taxonomy, WordNetTaxonomy):
+            break_probability = 0.5
+        else:
+            break_probability = 0.8
+
         # create non-hyponymy relation
         lst_non_hyponymy_samples = []
         for hyponymy in batch_hyponymy:
@@ -297,7 +302,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                 lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper)
             if "co-hyponym" in self._non_hyponymy_relation_target:
                 lst_tup_sample_b_swap_hyper_to_co_hyper = self._taxonomy.sample_random_co_hyponyms(hypernym=hyper, hyponym=hypo,
-                                                                                                   size=size_per_sample, break_probability=0.8,
+                                                                                                   size=size_per_sample, break_probability=break_probability,
                                                                                                    part_of_speech=pos)
                 lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper_to_co_hyper)
 
