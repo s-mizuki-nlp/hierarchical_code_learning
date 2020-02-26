@@ -1,12 +1,9 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
-import io, os, copy
-from typing import List, Tuple, Dict, Optional, Union
+from typing import List, Dict, Optional, Union
 import random
-import warnings
 
-import torch
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 
@@ -21,6 +18,7 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
                  embedding_batch_size: int, hyponymy_batch_size: int,
                  entity_depth_information: Optional[str] = None,
                  verbose: bool = False, **kwargs_hyponymy_dataloader):
+
 
         assert embedding_batch_size >= 2*hyponymy_batch_size, f"`embedding_batch_size` must be two times larger than `hyponymy_batch_size`."
         available_values = ("both","hypernym","hyponym","diff","lca",None)
@@ -48,6 +46,11 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
             self._taxonomy = BasicTaxonomy(hyponymy_dataset=hyponymy_dataset)
         else:
             raise NotImplementedError(f"unsupported hyponymy dataset type: {type(hyponymy_dataset)}")
+
+        # hyponymy sample order
+        n_hyponymy = len(self._hyponymy_dataset)
+        self._sample_order = list(range(n_hyponymy))
+        self.shuffle_hyponymy_dataset()
 
     def verify_batch_sizes(self):
 
@@ -148,6 +151,9 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
 
         return batch
 
+    def shuffle_hyponymy_dataset(self):
+        random.shuffle(self._sample_order)
+
     def __iter__(self):
 
         for batch_hyponymy_b in self._hyponymy_dataloader:
@@ -165,8 +171,8 @@ class WordEmbeddingsAndHyponymyDataset(Dataset):
         while True:
             n_idx_min = self._hyponymy_batch_size * idx
             n_idx_max = self._hyponymy_batch_size * (idx+1)
-
-            batch_hyponymy_b = self._hyponymy_dataset[n_idx_min:n_idx_max]
+            idx_hyponymy = self._sample_order[n_idx_min:n_idx_max]
+            batch_hyponymy_b = self._hyponymy_dataset[idx_hyponymy]
             # remove hyponymy pairs which is not encodable
             batch_hyponymy = [sample for sample in batch_hyponymy_b if self.is_encodable_all(sample["hyponym"], sample["hypernym"])]
             if len(batch_hyponymy) == 0:
@@ -230,11 +236,6 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
         if verbose:
             self.verify_batch_sizes()
-
-        # hyponymy sample order
-        n_hyponymy = len(self._hyponymy_dataset)
-        self._sample_order = list(range(n_hyponymy))
-        self.shuffle_hyponymy_dataset()
 
     def verify_batch_sizes(self):
 
@@ -365,9 +366,6 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         batch["non_hyponymy_relation_raw"] = lst_non_hyponymy_relation_raw
 
         return batch
-
-    def shuffle_hyponymy_dataset(self):
-        random.shuffle(self._sample_order)
 
     def __getitem__(self, idx):
 
