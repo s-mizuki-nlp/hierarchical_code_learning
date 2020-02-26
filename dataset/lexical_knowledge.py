@@ -16,7 +16,7 @@ class HyponymyDataset(Dataset):
     def __init__(self, path: str, header: bool, delimiter: str, columns: Dict[str, Union[int, slice]],
                  lowercase: bool = False,
                  replace_whitespace_with_underscore: bool = False,
-                 description: str = "", transform=None):
+                 description: str = "", transform=None, filter=None):
 
         super().__init__()
         self.path = path
@@ -29,13 +29,28 @@ class HyponymyDataset(Dataset):
         self._replace_whitespace = replace_whitespace_with_underscore
         self.description = description
         self.transform = transform
+        self.filter = filter
         self._lst_samples = self._text_loader(path, header)
+        if filter is not None:
+            print(f"filter in valid samples...")
+            self._lst_samples = self._filter_samples(self._lst_samples, filter)
 
     def _text_loader(self, path: str, header: bool):
         with io.open(path, mode="r") as ifs:
             if header:
                 _ = next(ifs)
             ret = list(filter(bool, [record.strip() for record in ifs]))
+        return ret
+
+    def _filter_samples(self, lst_samples, filter_function: Callable[[Any], bool]):
+        ret = []
+        for s_entry in lst_samples:
+            entry = self._preprocess(s_entry)
+            if self.transform is not None:
+                entry = self.transform(entry)
+
+            if filter_function(entry):
+                ret.append(s_entry)
         return ret
 
     def _apply(self, apply_column_name: str, apply_function: Callable, default_return_value: Optional[Any] = None):
