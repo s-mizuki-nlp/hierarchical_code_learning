@@ -9,6 +9,7 @@ import os, sys, io
 from typing import Dict, List, Union, Callable, Optional, Any, Iterable
 import torch
 from torch.utils.data import Dataset
+from _collections import defaultdict
 
 
 class HyponymyDataset(Dataset):
@@ -191,5 +192,88 @@ class HyponymyDataset(Dataset):
     def subset(self, indices: Iterable[int]):
         self._lst_samples = [self._lst_samples[idx] for idx in indices]
 
+
 class WordNetHyponymyDataset(HyponymyDataset):
     pass
+
+
+class WordNetSynsetHyponymyDataset(Dataset):
+
+    def __init__(self, hyponymy_dataset: HyponymyDataset):
+
+        self._hyponymy_dataset = hyponymy_dataset
+        self._lst_samples = self._transform_to_synset_pairs(hyponymy_dataset)
+
+    def _transform_to_synset_pairs(self, hyponymy_dataset: HyponymyDataset) -> List[Dict[str, Union[str, float]]]:
+        dict_lemmas_temp = defaultdict(list)
+        dict_lemmas = {}
+        set_processed_synset_pairs = set()
+        lst_records = []
+
+        for record in hyponymy_dataset:
+            synset_hyper = record["synset_hypernym"]
+            synset_hypo = record["synset_hyponym"]
+            lemma_hyper = record["hypernym"]
+            lemma_hypo = record["hyponym"]
+
+            dict_lemmas_temp[synset_hyper].append(lemma_hyper)
+            dict_lemmas_temp[synset_hypo].append(lemma_hypo)
+
+        # drop duplicates
+        for synset, lst_lemma in dict_lemmas_temp.items():
+            dict_lemmas[synset] = list(set(lst_lemma))
+
+        for record in hyponymy_dataset:
+            synset_hyper = record["synset_hypernym"]
+            synset_hypo = record["synset_hyponym"]
+            distance = record["distance"]
+            pos = record["pos"]
+
+            synset_pair = (synset_hyper, synset_hypo)
+            if synset_pair in set_processed_synset_pairs:
+                continue
+
+            record_new = {
+                "hypernym":synset_hyper,
+                "hyponym":synset_hypo,
+                "lemma_hypernym":dict_lemmas[synset_hyper],
+                "lemma_hyponym":dict_lemmas[synset_hypo],
+                "pos":pos,
+                "distance":distance
+            }
+            lst_records.append(record_new)
+            set_processed_synset_pairs.add(synset_pair)
+
+        return lst_records
+
+    def __len__(self):
+        return len(self._lst_samples)
+
+    def __iter__(self):
+        for entry in self._lst_samples:
+            yield entry
+
+    def __getitem__(self, idx: Union[int, List[int], torch.Tensor, slice]):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        # index to entry (entries)
+        if isinstance(idx, int):
+            entry = self._lst_samples[idx]
+        elif isinstance(idx, list):
+            entry = [self._lst_samples[i] for i in idx]
+        elif isinstance(idx, slice):
+            entry = self._lst_samples[idx]
+        else:
+            raise NotImplementedError(f"unsupported index type: {type(idx)}")
+
+        return entry
+
+    @property
+    def verbose(self):
+        ret = self._hyponymy_dataset.verbose
+        ret["n_sample"] = self.__len__()
+        return ret
+
+    def subset(self, indices: Iterable[int]):
+        self._lst_samples = [self._lst_samples[idx] for idx in indices]
