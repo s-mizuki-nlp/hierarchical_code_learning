@@ -9,7 +9,7 @@ import os
 import numpy as np
 from dataset.transform import FieldTypeConverter
 from dataset.filter import DictionaryFilter
-from config_files.wordnet_constant import SYNSETS_DEPTH_UP_TO_THIRD_LEVEL
+from config_files.wordnet_constant import SYNSETS_DEPTH_UP_TO_THIRD_LEVEL, SYNSETS_DEPTH_UP_TO_SECOND_LEVEL
 
 _distance_str_to_float = FieldTypeConverter(dict_field_type_converter={"distance":np.float32})
 _exclude_top_synsets = DictionaryFilter(excludes={"synset_hypernym":set(SYNSETS_DEPTH_UP_TO_SECOND_LEVEL)})
