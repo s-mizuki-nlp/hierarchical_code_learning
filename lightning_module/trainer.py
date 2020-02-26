@@ -295,7 +295,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
         loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_code_length + loss_mutual_info
 
         dict_losses = {
-            "train_loss_reconst": loss_reconst,
+            "train_loss_reconst": loss_reconst / self._scale_loss_reconst,
             "train_loss_mutual_info": loss_mutual_info / self._scale_loss_mi,
             "train_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
             "train_loss_non_hyponymy": loss_non_hyponymy / self._scale_loss_non_hyponymy,
