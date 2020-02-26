@@ -12,8 +12,8 @@ from dataset.filter import DictionaryFilter
 from config_files.wordnet_constant import SYNSETS_DEPTH_UP_TO_THIRD_LEVEL
 
 _distance_str_to_float = FieldTypeConverter(dict_field_type_converter={"distance":np.float32})
-# _exclude_top_synsets = DictionaryFilter(excludes={"synset_hypernym":set(SYNSETS_DEPTH_UP_TO_SECOND_LEVEL)})
-_exclude_top_synsets = DictionaryFilter(excludes={"synset_hypernym":set(SYNSETS_DEPTH_UP_TO_THIRD_LEVEL)})
+_exclude_top_synsets = DictionaryFilter(excludes={"synset_hypernym":set(SYNSETS_DEPTH_UP_TO_SECOND_LEVEL)})
+# _exclude_top_synsets = DictionaryFilter(excludes={"synset_hypernym":set(SYNSETS_DEPTH_UP_TO_THIRD_LEVEL)})
 
 DIR_LEXICAL_KNOWLEDGE = "/home/sakae/Windows/dataset/hypernym_detection/wordnet_most_frequent_sense/"
 INCLUDE_INSTANCE_OF = False
