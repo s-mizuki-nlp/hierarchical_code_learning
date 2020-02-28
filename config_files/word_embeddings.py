@@ -24,7 +24,7 @@ cfg_word_embeddings = {
         "enable_phrase_composition":True
     },
     "Word2Vec-GloVe-wiki-gigaword": {
-        "path_word2vec_format":os.path.join(DIR_WORD_EMBEDDINGS, "glove-wiki-gigaword-200/glove-wiki-gigaword-200"),
+        "path_word2vec_format":os.path.join(DIR_WORD_EMBEDDINGS, "glove-wiki-gigaword-200/glove-wiki-gigaword-200.gz"),
         "binary":True,
         "init_sims":False,
         "transform":None,
