@@ -386,8 +386,13 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             # we randomly sample the non-hyponymy relation from the mini-batch
             n_adjuster = len(self._non_hyponymy_relation_target)
             size_per_sample = self._non_hyponymy_multiple // n_adjuster
-            batch_non_hyponymy = self._create_non_hyponymy_samples_from_hyponymy_samples(batch_hyponymy=batch_hyponymy,
+            batch_non_hyponymy_b = self._create_non_hyponymy_samples_from_hyponymy_samples(batch_hyponymy=batch_hyponymy,
                                                                                          size_per_sample=size_per_sample)
+
+            # remove hyponymy pairs which is not encodable
+            batch_non_hyponymy = [sample for sample in batch_non_hyponymy_b if self.is_encodable_all(sample["hyponym"], sample["hypernym"])]
+
+            # concat it
             batch_hyponymy.extend(batch_non_hyponymy)
 
             # (optional) create swapped samples
