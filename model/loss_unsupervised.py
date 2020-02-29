@@ -120,9 +120,9 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
     def gate_open_ratio(self, value: float):
         self._gate_open_ratio = value
 
-    def _calc_digit_weights(self, n_digits: int, dtype, device) -> torch.Tensor:
+    def _calc_digit_weights(self, n_digits: int, reduction: str, dtype, device) -> torch.Tensor:
         if self._gate_open_ratio == 1.0:
-            t_w = torch.full(size=(n_digits,), fill_value=1/n_digits, dtype=dtype, device=device)
+            t_w = torch.ones(size=(n_digits,), dtype=dtype, device=device)
         else:
             t_w = torch.zeros(size=(n_digits,), dtype=dtype, device=device)
             i, d = divmod(self._gate_open_ratio*n_digits, 1)
@@ -131,8 +131,9 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
                 t_w[0] = 1.0
             else:
                 t_w[:i] = 1.0; t_w[i] = d
-                t_w = t_w / torch.sum(t_w)
 
+        if reduction.endswith("mean"):
+            t_w = t_w / torch.sum(t_w)
         t_w = t_w.reshape(1,-1)
         return t_w
 
@@ -163,10 +164,7 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
         # weight for each digit: (N_digits,)
         # weight is scaled; sum(weight) = 1
         n_digits, dtype, device = t_prob_c.shape[1], t_prob_c.dtype, t_prob_c.device
-        weight = self._calc_digit_weights(n_digits=n_digits, dtype=dtype, device=device)
-
+        weight = self._calc_digit_weights(n_digits=n_digits, reduction=self.reduction, dtype=dtype, device=device)
         mutual_info = torch.sum(weight*(total_entropy - conditional_entropy))
-        if self.reduction == "sum":
-            mutual_info = mutual_info * n_digits
 
         return - self._scale * mutual_info
