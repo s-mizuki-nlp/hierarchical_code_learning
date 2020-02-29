@@ -285,6 +285,9 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         # x: hypernym, y: hyponym
         dtype, device = self._dtype_and_device(t_prob_c_batch)
 
+        # clamp values so that it won't produce nan value.
+        t_prob_c_batch = torch.clamp(t_prob_c_batch, min=1E-5, max=(1.0-1E-5))
+
         t_idx_x = torch.tensor([tup[0] for tup in lst_hyponymy_tuple], dtype=torch.long, device=device)
         t_idx_y = torch.tensor([tup[1] for tup in lst_hyponymy_tuple], dtype=torch.long, device=device)
         y_true = torch.tensor([tup[2] for tup in lst_hyponymy_tuple], dtype=dtype, device=device)
