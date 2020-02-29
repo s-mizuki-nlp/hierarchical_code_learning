@@ -3,6 +3,7 @@
 
 import torch
 from torch.nn.modules import loss as L
+import numpy as np
 
 ### self-supervised loss classes ###
 from model.loss_supervised import HyponymyScoreLoss
@@ -37,7 +38,7 @@ class MutualInformationLoss(L._Loss):
 
     _EPS = 1E-5
 
-    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='elementwise_mean'):
+    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean'):
         """
         mutual information loss. it calculates the negative mutual information multiplied by the specified scale coefficient.
         warning: it always apply a samplewise (=in-batch) mean. you can only choose elementwise mean or sum.
@@ -92,13 +93,16 @@ class MutualInformationLoss(L._Loss):
     def scale(self, value):
         self._scale = value
 
+
 class OriginalMutualInformationLoss(MutualInformationLoss):
 
-    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='elementwise_mean', digit_weight_power: float = 0.0):
+    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean'):
         """
         mutual information loss. it calculates the negative mutual information multiplied by the specified scale coefficient.
+        weight of each digit is calculated based on the `gate_open_ratio` property.
+        when `gate_open_ratio` is one (=full_open), uniform weights are applied.
         warning: it always apply a samplewise (=in-batch) mean. you can only choose elementwise mean or sum.
-        :return: scale * $-I(C;X)$ = scale * $-(\mean{H(C_n) - H(C_n|X)}$
+        :return: scale * $-I(C;X)$ = scale * $-(\sum_{n}{w_n(H(C_n) - H(C_n|X))}$
 
         :param scale:  scale coefficient
         :param size_average:
@@ -106,11 +110,30 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
         :param reduction:
         """
         super().__init__(scale, size_average, reduce, reduction)
-        self._digit_weight_power = digit_weight_power
+        self._gate_open_ratio = 1.0
+
+    @property
+    def gate_open_ratio(self) -> float:
+        return self._gate_open_ratio
+
+    @gate_open_ratio.setter
+    def gate_open_ratio(self, value: float):
+        self._gate_open_ratio = value
 
     def _calc_digit_weights(self, n_digits: int, dtype, device) -> torch.Tensor:
-        t_w = torch.pow(torch.arange(1, n_digits+1, dtype=dtype, device=device), self._digit_weight_power)
-        t_w = t_w / torch.sum(t_w)
+        if self._gate_open_ratio == 1.0:
+            t_w = torch.full(size=(n_digits,), fill_value=1/n_digits, dtype=dtype, device=device)
+        else:
+            t_w = torch.zeros(size=(n_digits,), dtype=dtype, device=device)
+            i, d = divmod(self._gate_open_ratio*n_digits, 1)
+            i = int(i)
+            if i == 0:
+                t_w[0] = 1.0
+            else:
+                t_w[:i] = 1.0; t_w[i] = d
+                t_w = t_w / torch.sum(t_w)
+
+        t_w = t_w.reshape(1,-1)
         return t_w
 
     def entropy(self, probs: torch.Tensor) -> torch.Tensor:
