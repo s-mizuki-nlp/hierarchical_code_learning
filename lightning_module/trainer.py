@@ -31,7 +31,7 @@ class UnsupervisedTrainer(pl.LightningModule):
                  dataloader_test: Optional[DataLoader] = None,
                  learning_rate: Optional[float] = 0.001,
                  model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
-                 loss_scale_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
+                 loss_parameter_schedulers: Optional[Dict[str, Dict[str, Callable[[float], float]]]] = None,
                  ):
 
         super(UnsupervisedTrainer, self).__init__()
@@ -59,10 +59,10 @@ class UnsupervisedTrainer(pl.LightningModule):
         else:
             self._model_parameter_schedulers = model_parameter_schedulers
 
-        if loss_scale_schedulers is None:
-            self._loss_scale_schedulers = {}
+        if loss_parameter_schedulers is None:
+            self._loss_parameter_schedulers = {}
         else:
-            self._loss_scale_schedulers = loss_scale_schedulers
+            self._loss_parameter_schedulers = loss_parameter_schedulers
 
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).to(self._device)
@@ -90,7 +90,7 @@ class UnsupervisedTrainer(pl.LightningModule):
 
         current_step = self.trainer.global_step / (self.trainer.max_nb_epochs * self.trainer.total_batches)
         self._update_model_parameters(current_step, verbose=False)
-        self._update_loss_scales(current_step, verbose=False)
+        self._update_loss_parameters(current_step, verbose=False)
 
         # forward computation
         t_x = data_batch["embedding"]
@@ -195,34 +195,39 @@ class UnsupervisedTrainer(pl.LightningModule):
                 new_value = scheduler_function(current_step, self.current_epoch)
                 setattr(self._model, parameter_name, new_value)
 
-                # DEBUG
                 if verbose:
                     print(f"{parameter_name}: {current_value:.2f} -> {new_value:.2f}")
 
-    def _update_loss_scales(self, current_step: Optional[float] = None, verbose: bool = False):
+    def _update_loss_parameters(self, current_step: Optional[float] = None, verbose: bool = False):
         if current_step is None:
             current_step = self.current_epoch / self.trainer.max_nb_epochs
 
-        for loss_name, scheduler_function in self._loss_scale_schedulers.items():
-            if scheduler_function is None:
-                continue
+        for loss_name, dict_property_scheduler in self._loss_parameter_schedulers.items():
+            # get loss layer
             if not loss_name.startswith("_"):
                 loss_name = "_" + loss_name
-
             loss_layer = getattr(self, loss_name, None)
-            if (loss_layer is not None) and hasattr(loss_layer, "scale"):
-                current_value = loss_layer.scale
-                new_value = scheduler_function(current_step, self.current_epoch)
-                loss_layer.scale = new_value
+            if loss_layer is None:
+                continue
 
-                # DEBUG
+            # get property name and apply scheduler function
+            for property_name, scheduler_function in dict_property_scheduler.items():
+                if scheduler_function is None:
+                    continue
+
+                # check if property exists
+                if not hasattr(loss_layer, property_name):
+                    continue
+
+                current_value = getattr(loss_layer, property_name, None)
+                new_value = scheduler_function(current_step, self.current_epoch)
+                setattr(loss_layer, property_name, new_value)
+
                 if verbose:
-                    print(f"{loss_name}: {current_value:.2f} -> {new_value:.2f}")
+                    print(f"{loss_name}.{property_name}: {current_value:.2f} -> {new_value:.2f}")
 
 
     def on_epoch_start(self):
-        # self._update_model_parameters()
-        # self._update_loss_scales()
         pass
 
 
@@ -241,11 +246,11 @@ class SupervisedTrainer(UnsupervisedTrainer):
                  learning_rate: Optional[float] = 0.001,
                  use_intermediate_representation: bool = False,
                  model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
-                 loss_scale_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
+                 loss_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
                  ):
 
         super().__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate,
-                         model_parameter_schedulers, loss_scale_schedulers)
+                         model_parameter_schedulers, loss_parameter_schedulers)
 
         self._use_intermediate_representation = use_intermediate_representation
         self._loss_hyponymy = loss_hyponymy
@@ -260,7 +265,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
 
         current_step = self.trainer.global_step / (self.trainer.max_nb_epochs * self.trainer.total_batches)
         self._update_model_parameters(current_step, verbose=False)
-        self._update_loss_scales(current_step, verbose=False)
+        self._update_loss_parameters(current_step, verbose=False)
 
         # forward computation
         t_x = data_batch["embedding"]
@@ -379,6 +384,4 @@ class SupervisedTrainer(UnsupervisedTrainer):
         return {"val_loss":loss, "log":metrics}
 
     def on_epoch_start(self):
-        # self._update_model_parameters()
-        # self._update_loss_scales()
         self.train_dataloader().dataset.shuffle_hyponymy_dataset()
