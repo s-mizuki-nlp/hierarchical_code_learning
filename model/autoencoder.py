@@ -47,8 +47,10 @@ class AutoEncoder(nn.Module):
 
     @gate_open_ratio.setter
     def gate_open_ratio(self, value):
-        if self.gate_open_ratio is not None:
+        if hasattr(self._encoder, "gate_open_ratio"):
             setattr(self._encoder, "gate_open_ratio", value)
+        if hasattr(self._discretizer, "gate_open_ratio"):
+            setattr(self._discretizer, "gate_open_ratio", value)
 
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).type(self._dtype)
@@ -117,7 +119,7 @@ class AutoEncoder(nn.Module):
             t_x = self._numpy_to_tensor(mat_x)
             t_code = self._encode(t_x)
 
-        return self._t_code.cpu().numpy()
+        return t_code.cpu().numpy()
 
     def _decode(self, t_code_prob: torch.Tensor):
 
