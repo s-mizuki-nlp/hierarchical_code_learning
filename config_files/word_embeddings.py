@@ -21,7 +21,8 @@ cfg_word_embeddings = {
     "fastText-wiki-news": {
         "path_fasttext_binary_format":os.path.join(DIR_WORD_EMBEDDINGS, "fasttext-wiki-news-300/wiki-news-300d-1M-subword.bin"),
         "transform":None,
-        "enable_phrase_composition":True
+        "enable_phrase_composition":True,
+        "norm":True
     },
     "Word2Vec-GloVe-wiki-gigaword": {
         "path_word2vec_format":os.path.join(DIR_WORD_EMBEDDINGS, "glove-wiki-gigaword-200/glove-wiki-gigaword-200.gz"),
