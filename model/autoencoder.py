@@ -43,7 +43,14 @@ class AutoEncoder(nn.Module):
 
     @property
     def gate_open_ratio(self):
-        return getattr(self._encoder, "gate_open_ratio", None)
+        value_e = getattr(self._encoder, "gate_open_ratio", None)
+        value_d = getattr(self._discretizer, "gate_open_ratio", None)
+        if value_e is not None:
+            return value_e
+        elif value_d is not None:
+            return value_d
+        else:
+            return None
 
     @gate_open_ratio.setter
     def gate_open_ratio(self, value):
