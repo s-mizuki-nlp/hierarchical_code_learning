@@ -90,7 +90,7 @@ class BasicTaxonomy(object):
     def dag_ancestors(self, entity):
         return self._dag_ancestors(entity, self.dag)
 
-    @lru_cache(maxsize=1000000)
+    @lru_cache(maxsize=200000)
     def _dag_ancestors(self, entity, graph):
         return nx.ancestors(graph, entity)
 
@@ -103,14 +103,14 @@ class BasicTaxonomy(object):
     def hypernyms_and_hyponyms_and_self(self, entity):
         return self._hypernyms_and_hyponyms_and_self(entity, self.dag)
 
-    @lru_cache(maxsize=1000000)
+    @lru_cache(maxsize=200000)
     def _hypernyms_and_hyponyms_and_self(self, entity, graph):
         return self.hyponyms(entity) | self.hypernyms(entity) | {entity}
 
     def hyponyms_and_self(self, entity):
         return self._hyponyms_and_self(entity, self.dag)
 
-    @lru_cache(maxsize=1000000)
+    @lru_cache(maxsize=200000)
     def _hyponyms_and_self(self, entity, graph):
         return self.hyponyms(entity) | {entity}
 
