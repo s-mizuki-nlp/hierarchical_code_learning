@@ -70,9 +70,9 @@ class SoftHyponymyPredictor(object):
     def _calc_optimal_threshold_for_accuracy(self, y_true, probas_pred, verbose: bool = True, **kwargs):
 
         # compute the threshold that maximizes accuracy using receiver operating curve.
-        v_tpr, v_fpr, v_threshold = roc_curve(y_true=y_true, y_score=probas_pred, **kwargs)
+        v_fpr, v_tpr, v_threshold = roc_curve(y_true=y_true, y_score=probas_pred, **kwargs)
         n_sample = len(y_true)
-        n_positive = np.sum(np.array(y_true ) == True)
+        n_positive = np.sum(np.array(y_true) == True)
         n_negative = n_sample - n_positive
         v_accuracy = (v_tpr*n_positive + (1-v_fpr)*n_negative)/n_sample
 
