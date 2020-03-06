@@ -10,7 +10,7 @@ import numpy as np
 import pydash
 from tests_inner.utils import calc_hyponymy_score
 from dataset.taxonomy import WordNetTaxonomy
-from .hyponymy import SoftHyponymyPredictor
+from .hyponymy import HyponymyScoreBasedPredictor
 from .supervised import BaseEvaluator
 from dataset.word_embeddings import AbstractWordEmbeddingsDataset
 from model.autoencoder import AutoEncoder
@@ -34,7 +34,7 @@ class HyponymyScoreDistributionEvaluator(BaseEvaluator):
                  ground_truth: bool = False,
                  normalize: bool = True):
 
-        predictor = SoftHyponymyPredictor()
+        predictor = HyponymyScoreBasedPredictor()
         n_digits = self._model.n_digits
 
         lst_s_ij = []; lst_s_ji = []; lst_category = []
@@ -83,7 +83,7 @@ class HyponymyScoreDiffEvaluator(BaseEvaluator):
                  code_representation_key_path: Optional[str] = "entity_info.code_representation",
                  normalize: bool = True):
 
-        predictor = SoftHyponymyPredictor()
+        predictor = HyponymyScoreBasedPredictor()
         n_digits = self._model.n_digits
         entity_to_code = lambda entity: pydash.objects.get(self._embeddings_dataset[entity], code_representation_key_path)
 
@@ -153,7 +153,7 @@ class WordNetHyponymyScoreDiffEvaluator(BaseEvaluator):
                  remove_null_score: bool = True,
                  normalize: bool = True):
 
-        predictor = SoftHyponymyPredictor()
+        predictor = HyponymyScoreBasedPredictor()
         n_digits = self._model.n_digits
 
         n_code_length = 1
