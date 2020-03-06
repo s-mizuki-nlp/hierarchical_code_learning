@@ -41,7 +41,7 @@ class BasePredictor(object, metaclass=ABCMeta):
         else:
             raise TypeError(f"unsupported type: {type(object)}")
 
-    def _calc_optimal_threshold_for_f_value(self, y_true, probas_pred, verbose: bool = True, **kwargs):
+    def calc_optimal_threshold_fvalue(self, y_true, probas_pred, verbose: bool = True, **kwargs):
 
         def _f1_score_safe(prec, recall):
             if prec == recall == 0.0:
@@ -66,7 +66,7 @@ class BasePredictor(object, metaclass=ABCMeta):
 
         return threshold_opt
 
-    def _calc_optimal_threshold_for_accuracy(self, y_true, probas_pred, verbose: bool = True, **kwargs):
+    def calc_optimal_threshold_accuracy(self, y_true, probas_pred, verbose: bool = True, **kwargs):
 
         # compute the threshold that maximizes accuracy using receiver operating curve.
         v_fpr, v_tpr, v_threshold = roc_curve(y_true=y_true, y_score=probas_pred, **kwargs)
@@ -152,6 +152,19 @@ class BasePredictor(object, metaclass=ABCMeta):
 
         pass
 
+    @abstractmethod
+    def infer_score(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like) -> str:
+        """
+        it returns the inferred score that is used for classification.
+        conceptually, it represents a degree of hyponymy relation.
+
+        @param mat_code_prob_x: code probability of the entity x
+        @param mat_code_prob_y: code probability of the other entity y
+        @return: scalar value
+        """
+
+        pass
+
     @property
     def CLASS_LABELS(self):
         return {
@@ -214,6 +227,9 @@ class HyponymyScoreBasedPredictor(BasePredictor):
         # otherwise, relation must be "other".
         else:
             return "other"
+
+    def infer_score(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like):
+        return self.calc_soft_hyponymy_score(mat_code_prob_x, mat_code_prob_y)
 
     @property
     def THRESHOLD(self):
@@ -280,6 +296,8 @@ class EntailmentProbabilityBasedPredictor(BasePredictor):
         else:
             return "other"
 
+    def infer_score(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like) -> str:
+        return self.calc_entailment_probability(mat_code_prob_x, mat_code_prob_y)
 
     @property
     def THRESHOLD(self):
@@ -312,6 +330,9 @@ class HyponymyPropensityScoreBasedPredictor(HyponymyScoreBasedPredictor):
             return "hyponymy"
         else:
             return "reverse-hyponymy"
+
+    def infer_score(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like):
+        return self.calc_hyponymy_propensity_score(mat_code_prob_x, mat_code_prob_y, directionality=False)
 
     @property
     def THRESHOLD(self):
