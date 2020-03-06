@@ -19,6 +19,7 @@ from dataset.word_embeddings import AbstractWordEmbeddingsDataset
 from model.autoencoder import AutoEncoder
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, f1_score, roc_auc_score
 from .hyponymy import SoftHyponymyPredictor
+from scipy.stats import spearmanr, kendalltau
 
 class BaseEvaluator(object, metaclass=ABCMeta):
 
@@ -49,6 +50,40 @@ class BaseEvaluator(object, metaclass=ABCMeta):
             return tensor_or_list.tolist()
         else:
             return tensor_or_list
+
+    def _inference(self, dict_inference_functions: Dict[str, Callable[[np.array, np.array], Any]],
+                   hyponym_field_name: str, hypernym_field_name: str, embedding_field_name: str):
+
+        dict_lst_inference = defaultdict(list)
+        for batch in self._evaluation_data_loader:
+            # take hyponyms, hypernyms
+            lst_hyponyms = batch[hyponym_field_name]
+            lst_hypernyms = batch[hypernym_field_name]
+            # take embeddings
+            mat_emb_hyponyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hyponyms])
+            mat_emb_hypernyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hypernyms])
+            # encode embeddings into the code probabilities
+            _, t_mat_code_prob_hyponyms, _ = self._model.predict(mat_emb_hyponyms)
+            _, t_mat_code_prob_hypernyms, _ = self._model.predict(mat_emb_hypernyms)
+
+            # apply predictor functions
+            # x: hypernym, y: hyponym
+            for mat_hyper, mat_hypo in zip(t_mat_code_prob_hypernyms, t_mat_code_prob_hyponyms):
+                for inference_name, inference_function in dict_inference_functions.items():
+                    ret = inference_function(mat_hyper, mat_hypo)
+                    dict_lst_inference[inference_name].append(ret)
+
+        return dict_lst_inference
+
+    def _get_specific_field_values(self, target_field_name):
+        lst_ret = []
+        for batch in self._evaluation_data_loader:
+            obj = batch[target_field_name]
+            if torch.is_tensor(obj) or isinstance(obj, list):
+                lst_ret.extend(self._tensor_to_list(obj))
+            else:
+                lst_ret.append(obj)
+        return lst_ret
 
     @abstractmethod
     def _update_task_specific_evaluator(self):
@@ -125,30 +160,15 @@ class HyponymyDirectionalityEvaluator(BaseEvaluator):
         predictor = SoftHyponymyPredictor()
         evaluator = self._default_evaluator if evaluator is None else evaluator
 
-        lst_gt = []
-        lst_pred = []
-        for batch in self._evaluation_data_loader:
-            # take hyponyms, hypernyms
-            lst_hyponyms = batch[hyponym_field_name]
-            lst_hypernyms = batch[hypernym_field_name]
-            # take embeddings
-            mat_emb_hyponyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hyponyms])
-            mat_emb_hypernyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hypernyms])
-            # encode embeddings into the code probabilities
-            _, t_mat_code_prob_hyponyms, _ = self._model.predict(mat_emb_hyponyms)
-            _, t_mat_code_prob_hypernyms, _ = self._model.predict(mat_emb_hypernyms)
-
-            # predict directionality using code probabilities
-            # suppose x is hypernym and y is hyponym
-            lst_pred_b = []
-            for mat_x, mat_y in zip(t_mat_code_prob_hypernyms, t_mat_code_prob_hyponyms):
-                pred = predictor.predict_directionality(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
-                lst_pred_b.append(pred)
-
-            # store the ground-truth and prediction
-            lst_gt_b = self._tensor_to_list(batch[class_label_field_name])
-            lst_gt.extend(lst_gt_b)
-            lst_pred.extend(lst_pred_b)
+        # do prediction
+        dict_inference_functions = {
+            "predicted_class": lambda mat_hyper, mat_hypo: predictor.predict_directionality(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo)
+        }
+        dict_inference = self._inference(dict_inference_functions,
+                                         hypernym_field_name=hypernym_field_name, hyponym_field_name=hyponym_field_name,
+                                         embedding_field_name=embedding_field_name)
+        lst_pred = dict_inference["predicted_class"]
+        lst_gt = self._get_specific_field_values(target_field_name=class_label_field_name)
 
         # calculate metrics
         dict_ret = {}
@@ -206,35 +226,19 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
         predictor = SoftHyponymyPredictor(threshold_soft_hyponymy_score=threshold_soft_hyponymy_score)
         evaluator = self._default_evaluator if evaluator is None else evaluator
 
-        lst_gt = []; lst_pred = []; lst_binary = []
-        lst_score = []; lst_true = []
-        lst_category = []
-        for batch in self._evaluation_data_loader:
-            # take hyponyms, hypernyms
-            lst_hyponyms = batch[hyponym_field_name]
-            lst_hypernyms = batch[hypernym_field_name]
-            # take embeddings
-            mat_emb_hyponyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hyponyms])
-            mat_emb_hypernyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hypernyms])
-            # encode embeddings into the code probabilities
-            _, t_mat_code_prob_hyponyms, _ = self._model.predict(mat_emb_hyponyms)
-            _, t_mat_code_prob_hypernyms, _ = self._model.predict(mat_emb_hypernyms)
+        # do prediction
+        dict_inference_functions = {
+            "predicted_class": lambda mat_hyper, mat_hypo: predictor.predict_is_hyponymy_relation(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo),
+            "hyponymy_score": lambda mat_hyper, mat_hypo: predictor.calc_soft_hyponymy_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo)
+        }
+        dict_inference = self._inference(dict_inference_functions,
+                                         hypernym_field_name=hypernym_field_name, hyponym_field_name=hyponym_field_name,
+                                         embedding_field_name=embedding_field_name)
+        lst_pred = dict_inference["predicted_class"]
+        lst_score = dict_inference["hyponymy_score"]
 
-            # predict directionality using code probabilities
-            # suppose x is hypernym and y is hyponym
-            # ground-truth class label is either True or False
-            lst_gt_b = self._tensor_to_list(batch[class_label_field_name])
-            for mat_x, mat_y, gt in zip(t_mat_code_prob_hypernyms, t_mat_code_prob_hyponyms, lst_gt_b):
-                pred = predictor.predict_is_hyponymy_relation(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
-                score = predictor.calc_soft_hyponymy_score(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
-                lst_pred.append(pred)
-                lst_score.append(score)
-                lst_gt.append(gt)
-                lst_binary.append(gt)
-                lst_true.append(pred == gt)
-
-            # store category information
-            lst_category.extend(self._tensor_to_list(batch[category_field_name]))
+        lst_gt = self._get_specific_field_values(target_field_name=class_label_field_name)
+        lst_category = self._get_specific_field_values(target_field_name=category_field_name)
 
         # calculate metrics
         dict_ret = {}
@@ -243,7 +247,7 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
                 if metric_name == "accuracy_by_category":
                     dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
                 elif metric_name in ("area_under_curve", "optimal_threshold"):
-                    dict_ret[metric_name] = f_metric(lst_binary, lst_score)
+                    dict_ret[metric_name] = f_metric(lst_gt, lst_score)
                 else:
                     dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
             except:
@@ -296,41 +300,25 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
                  **kwargs_for_metric_function):
 
         evaluator = self._default_evaluator if evaluator is None else evaluator
-
         predictor = SoftHyponymyPredictor(threshold_soft_hyponymy_score=threshold_soft_hyponymy_score)
 
-        lst_gt = []; lst_pred = []; lst_binary = []
-        lst_score = []; lst_true = []
-        lst_category = []
-        for batch in self._evaluation_data_loader:
-            # take hyponyms, hypernyms
-            lst_hyponyms = batch[hyponym_field_name]
-            lst_hypernyms = batch[hypernym_field_name]
-            # take embeddings
-            mat_emb_hyponyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hyponyms])
-            mat_emb_hypernyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hypernyms])
-            # encode embeddings into the code probabilities
-            _, t_mat_code_prob_hyponyms, _ = self._model.predict(mat_emb_hyponyms)
-            _, t_mat_code_prob_hypernyms, _ = self._model.predict(mat_emb_hypernyms)
+        # do prediction
+        dict_inference_functions = {
+            "predicted_class": lambda mat_hyper, mat_hypo: predictor.predict_hyponymy_relation(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo),
+            "hyponymy_score": lambda mat_hyper, mat_hypo: max(
+                predictor.calc_soft_hyponymy_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo),
+                predictor.calc_soft_hyponymy_score(mat_code_prob_x=mat_hypo, mat_code_prob_y=mat_hyper)
+                )
+        }
+        dict_inference = self._inference(dict_inference_functions,
+                                         hypernym_field_name=hypernym_field_name, hyponym_field_name=hyponym_field_name,
+                                         embedding_field_name=embedding_field_name)
+        lst_pred = dict_inference["predicted_class"]
+        lst_score = dict_inference["hyponymy_score"]
 
-            # predict directionality using code probabilities
-            # suppose x is hypernym and y is hyponym
-            lst_gt_b = self._tensor_to_list(batch[class_label_field_name])
-            for mat_x, mat_y, gt in zip(t_mat_code_prob_hypernyms, t_mat_code_prob_hyponyms, lst_gt_b):
-                pred = predictor.predict_hyponymy_relation(mat_code_prob_x=mat_x, mat_code_prob_y=mat_y)
-                lst_pred.append(pred)
-                lst_gt.append(gt)
-                lst_true.append(pred == gt)
-
-                # calculate features that are needed for threshold analysis
-                score_forward = predictor.calc_soft_hyponymy_score(mat_x, mat_y)
-                score_reversed = predictor.calc_soft_hyponymy_score(mat_y, mat_x)
-                score = max(score_forward, score_reversed)
-                lst_score.append(score)
-                lst_binary.append(gt in ("hyponymy", "reverse-hyponymy"))
-
-            # store category information
-            lst_category.extend(self._tensor_to_list(batch[category_field_name]))
+        lst_gt = self._get_specific_field_values(target_field_name=class_label_field_name)
+        lst_gt_binary = [gt in ("hyponymy", "reverse-hyponymy") for gt in lst_gt]
+        lst_category = self._get_specific_field_values(target_field_name=category_field_name)
 
         # calculate metrics
         dict_ret = {}
@@ -339,7 +327,7 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
                 if metric_name == "accuracy_by_category":
                     dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
                 elif metric_name in ("area_under_curve", "optimal_threshold"):
-                    dict_ret[metric_name] = f_metric(lst_binary, lst_score)
+                    dict_ret[metric_name] = f_metric(lst_gt_binary, lst_score)
                 else:
                     dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
             except:
@@ -347,3 +335,55 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
 
         return lst_gt, lst_pred, dict_ret
 
+
+class GradedLexicalEntailmentEvaluator(BaseEvaluator):
+
+    """
+    evaluator for graded lexical entailment task.
+    this task requires the prediction of the degree of lexical entailment of a given word pair.
+    """
+
+    def _update_task_specific_evaluator(self):
+        self._default_evaluator = {} # make it empty
+        self._default_evaluator["spearman_rho"] = self._spearman_rho
+        self._default_evaluator["kendall_tau"] = self._kendall_tau
+
+    def _spearman_rho(self, lst_gt, lst_pred, **kwargs):
+        rho, p_value = spearmanr(lst_gt, lst_pred)
+        return rho
+
+    def _kendall_tau(self, lst_gt, lst_pred, **kwargs):
+        tau, p_value = kendalltau(lst_gt, lst_pred)
+        return tau
+
+    def evaluate(self, hyponym_field_name: str = "hyponym",
+                 hypernym_field_name: str = "hypernym",
+                 rating_field_name: str = "rating",
+                 embedding_field_name: str = "embedding",
+                 evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
+                 **kwargs_for_metric_function):
+
+        evaluator = self._default_evaluator if evaluator is None else evaluator
+        predictor = SoftHyponymyPredictor()
+
+        # do prediction
+        dict_inference_functions = {
+            "predicted_rating": lambda mat_hyper, mat_hypo: predictor.calc_soft_hyponymy_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo)
+        }
+        dict_inference = self._inference(dict_inference_functions,
+                                         hypernym_field_name=hypernym_field_name, hyponym_field_name=hyponym_field_name,
+                                         embedding_field_name=embedding_field_name)
+        lst_pred = dict_inference["predicted_rating"]
+
+        # get ground-truth rating
+        lst_gt = self._get_specific_field_values(target_field_name=rating_field_name)
+
+        # calculate metrics
+        dict_ret = {}
+        for metric_name, f_metric in evaluator.items():
+            try:
+                dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
+            except:
+                dict_ret[metric_name] = None
+
+        return lst_gt, lst_pred, dict_ret
