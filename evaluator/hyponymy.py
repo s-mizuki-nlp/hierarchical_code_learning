@@ -9,7 +9,7 @@ from typing import Union, Optional, Tuple, Iterable
 from pprint import pprint
 import torch
 import numpy as np
-from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import precision_recall_curve, roc_curve
 
 from model.loss_supervised import HyponymyScoreLoss
 from . import utils
@@ -24,7 +24,7 @@ class SoftHyponymyPredictor(object):
         # this is used to compute soft code length
         self._auxiliary = HyponymyScoreLoss()
         self._threshold_hyponymy_propensity_score = threshold_hyponymy_propensity_score
-        self._threshold_hyponymy_score = threshold_soft_hyponymy_score
+        self._threshold_soft_hyponymy_score = threshold_soft_hyponymy_score
 
     def _tensor_to_numpy(self, object: Union[torch.Tensor, np.ndarray]) -> np.ndarray:
         if isinstance(object, torch.Tensor):
@@ -42,7 +42,7 @@ class SoftHyponymyPredictor(object):
         else:
             raise TypeError(f"unsupported type: {type(object)}")
 
-    def _calc_optimal_threshold(self, y_true, probas_pred, verbose: bool = True, **kwargs):
+    def _calc_optimal_threshold_for_f_value(self, y_true, probas_pred, verbose: bool = True, **kwargs):
 
         def _f1_score_safe(prec, recall):
             if prec == recall == 0.0:
@@ -67,43 +67,28 @@ class SoftHyponymyPredictor(object):
 
         return threshold_opt
 
-    def optimize_score_threshold(self, threshold_type: str, development_set: Iterable[Tuple[array_like, array_like, bool]],
-                                 verbose: bool = True, **kwargs) -> None:
-        """
-        automatically adjust the threshold of either the hyponymy propensity score or hyponymy score
-        so as to maximize the f-value on the development set.
+    def _calc_optimal_threshold_for_accuracy(self, y_true, probas_pred, verbose: bool = True, **kwargs):
 
-        :param threshold_type: optimization target. value will be either `hyponymy_propensity_score` or `soft_hyponymy_score` .
-        :param development_set: iterable of the tuple of (code probability of x, code probability of y, hyponymy or not)
-        :param verbose: print verbosity
-        :param kwargs: keyword arguments passed to sklearn.metrics.precision_recall_curve() method.
-        """
+        # compute the threshold that maximizes accuracy using receiver operating curve.
+        v_tpr, v_fpr, v_threshold = roc_curve(y_true=y_true, y_score=probas_pred, **kwargs)
+        n_sample = len(y_true)
+        n_positive = np.sum(np.array(y_true ) == True)
+        n_negative = n_sample - n_positive
+        v_accuracy = (v_tpr*n_positive + (1-v_fpr)*n_negative)/n_sample
 
-        valid_threshold_type = ("hyponymy_propensity_score", "soft_hyponymy_score")
-        assert threshold_type in valid_threshold_type, f"`threshold_type` must be: {','.join(valid_threshold_type)}"
+        idx = np.nanargmax(v_accuracy)
+        threshold_opt = v_threshold[idx]
 
-        lst_y_true = []
-        lst_score = []
-        for t_x, t_y, y_true in development_set:
-            if threshold_type == "hyponymy_propensity_score":
-                score = self.calc_hyponymy_propensity_score(t_x, t_y, directionality=False)
-            elif threshold_type == "soft_hyponymy_score":
-                # assume t_x is hypernym, t_y is hyponym
-                score = self.calc_soft_hyponymy_score(t_x, t_y)
-            lst_y_true.append(y_true)
-            lst_score.append(score)
+        if verbose:
+            report = {
+                "threshold_opt": threshold_opt,
+                "tpr": v_tpr[idx],
+                "fpr": v_fpr[idx],
+                "accuracy": v_accuracy[idx]
+            }
+            pprint(report)
 
-        # if all examples are positive, we have to nothing but take the minimum value.
-        if all(lst_y_true):
-            return min(lst_score)
-
-        threshold_opt = self._calc_optimal_threshold(y_true=lst_y_true, probas_pred=lst_score, verbose=verbose, **kwargs)
-
-        print(f"threshold was set to: {threshold_opt}")
-        if threshold_type == "hyponymy_propensity_score":
-            self._threshold_hyponymy_propensity_score = threshold_opt
-        elif threshold_type == "soft_hyponymy_score":
-            self._threshold_hyponymy_score = threshold_opt
+        return threshold_opt
 
     def calc_soft_hyponymy_score(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like):
         t_code_prob_x = self._numpy_to_tensor(mat_code_prob_x)
@@ -121,7 +106,7 @@ class SoftHyponymyPredictor(object):
 
         return score
 
-    def predict_directionality(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like):
+    def predict_directionality(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like) -> str:
         """
         assume (x,y) is hyponymy relation, it predicts which one, x or y, is hypernym
 
@@ -139,7 +124,7 @@ class SoftHyponymyPredictor(object):
         else:
             return "y"
 
-    def predict_hyponymy(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like, threshold: Optional[float] = None):
+    def predict_is_hyponymy_relation(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like, threshold: Optional[float] = None) -> bool:
         """
         it predicts whether (x,y) pair is hyponymy or other relations (c.f. co-hyponymy, reverse-hyponymy, ...).
         this function is order-dependent. when you swap the order of arguments, response may be different.
@@ -152,14 +137,14 @@ class SoftHyponymyPredictor(object):
         score = self.calc_soft_hyponymy_score(mat_code_prob_x, mat_code_prob_y)
 
         # compare score with the threshold.
-        threshold = self._threshold_hyponymy_score if threshold is None else threshold
+        threshold = self._threshold_soft_hyponymy_score if threshold is None else threshold
 
         # clasify if it is hyponymy or not
         ret = score > threshold
 
         return ret
 
-    def predict_relation(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like, threshold: Optional[float] = None):
+    def predict_hyponymy_relation_by_hponymy_propensity_score(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like, threshold: Optional[float] = None):
         """
         it predicts what relation of the (x,y) pair holds among hyponymy, reverse-hyponymy, and other relations.
         this function is order-dependent only if (x,y) pair is either hyponymy or reverse-hyponymy relation.
@@ -190,7 +175,7 @@ class SoftHyponymyPredictor(object):
         else:
             return "reverse-hyponymy"
 
-    def predict_relation_simple(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like, threshold: Optional[float] = None):
+    def predict_hyponymy_relation(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like, threshold: Optional[float] = None) -> str:
         """
         it predicts what relation of the (x,y) pair holds among hyponymy, reverse-hyponymy, and other relations.
         this function is order-dependent only if (x,y) pair is either hyponymy or reverse-hyponymy relation.
@@ -206,10 +191,10 @@ class SoftHyponymyPredictor(object):
         score_reversed = self.calc_soft_hyponymy_score(mat_code_prob_y, mat_code_prob_x)
 
         # compare score with the threshold.
-        threshold = self._threshold_hyponymy_score if threshold is None else threshold
+        threshold = self._threshold_soft_hyponymy_score if threshold is None else threshold
 
         # if either one direction is true, relation must be either hyponymy or reverse hyponymy.
-        if (score_forward > threshold) or (score_reversed > threshold):
+        if max(score_forward, score_reversed) > threshold:
             # re-classify whether (forward) hyponymy or reverse hyponymy.
             direction = self.predict_directionality(mat_code_prob_x, mat_code_prob_y)
             if direction == "x":
@@ -224,7 +209,7 @@ class SoftHyponymyPredictor(object):
     def thresholds(self):
         ret = {
             "hyponymy_propensity_score":self._threshold_hyponymy_propensity_score,
-            "soft_hyponymy_score":self._threshold_hyponymy_score
+            "soft_hyponymy_score":self._threshold_soft_hyponymy_score
         }
         return ret
 
