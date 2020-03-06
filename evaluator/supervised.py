@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, Dataset
 from dataset.word_embeddings import AbstractWordEmbeddingsDataset
 from model.autoencoder import AutoEncoder
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, f1_score, roc_auc_score
-from .hyponymy import HyponymyScoreBasedPredictor
+from .hyponymy import HyponymyScoreBasedPredictor, EntailmentProbabilityBasedPredictor
 from scipy.stats import spearmanr, kendalltau
 
 class BaseEvaluator(object, metaclass=ABCMeta):
@@ -209,7 +209,7 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
 
     def _optimal_threshold(self, lst_gt, lst_score, **kwargs):
         predictor = HyponymyScoreBasedPredictor()
-        ret = predictor._calc_optimal_threshold_for_accuracy(y_true=lst_gt, probas_pred=lst_score, verbose=True)
+        ret = predictor.calc_optimal_threshold_accuracy(y_true=lst_gt, probas_pred=lst_score, verbose=True)
         return ret
 
     def evaluate(self, hyponym_field_name: str = "hyponym",
@@ -227,13 +227,13 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
         # do prediction
         dict_inference_functions = {
             "predicted_class": lambda mat_hyper, mat_hypo: predictor.predict_is_hyponymy_relation(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo),
-            "hyponymy_score": lambda mat_hyper, mat_hypo: predictor.calc_soft_hyponymy_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo)
+            "predicted_score": lambda mat_hyper, mat_hypo: predictor.infer_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo)
         }
         dict_inference = self._inference(dict_inference_functions,
                                          hypernym_field_name=hypernym_field_name, hyponym_field_name=hyponym_field_name,
                                          embedding_field_name=embedding_field_name)
         lst_pred = dict_inference["predicted_class"]
-        lst_score = dict_inference["hyponymy_score"]
+        lst_score = dict_inference["predicted_score"]
 
         lst_gt = self._get_specific_field_values(target_field_name=class_label_field_name)
         lst_category = self._get_specific_field_values(target_field_name=category_field_name)
@@ -285,7 +285,7 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
 
     def _optimal_threshold(self, lst_gt, lst_score, **kwargs):
         predictor = HyponymyScoreBasedPredictor()
-        ret = predictor._calc_optimal_threshold_for_accuracy(y_true=lst_gt, probas_pred=lst_score, verbose=True)
+        ret = predictor.calc_optimal_threshold_accuracy(y_true=lst_gt, probas_pred=lst_score, verbose=True)
         return ret
 
     def evaluate(self, hyponym_field_name: str = "hyponym",
@@ -303,16 +303,16 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
         # do prediction
         dict_inference_functions = {
             "predicted_class": lambda mat_hyper, mat_hypo: predictor.predict_hyponymy_relation(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo),
-            "hyponymy_score": lambda mat_hyper, mat_hypo: max(
-                predictor.calc_soft_hyponymy_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo),
-                predictor.calc_soft_hyponymy_score(mat_code_prob_x=mat_hypo, mat_code_prob_y=mat_hyper)
+            "predicted_score": lambda mat_hyper, mat_hypo: max(
+                predictor.infer_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo),
+                predictor.infer_score(mat_code_prob_x=mat_hypo, mat_code_prob_y=mat_hyper)
                 )
         }
         dict_inference = self._inference(dict_inference_functions,
                                          hypernym_field_name=hypernym_field_name, hyponym_field_name=hyponym_field_name,
                                          embedding_field_name=embedding_field_name)
         lst_pred = dict_inference["predicted_class"]
-        lst_score = dict_inference["hyponymy_score"]
+        lst_score = dict_inference["predicted_score"]
 
         lst_gt = self._get_specific_field_values(target_field_name=class_label_field_name)
         lst_gt_binary = [gt in ("hyponymy", "reverse-hyponymy") for gt in lst_gt]
@@ -366,12 +366,12 @@ class GradedLexicalEntailmentEvaluator(BaseEvaluator):
 
         # do prediction
         dict_inference_functions = {
-            "predicted_rating": lambda mat_hyper, mat_hypo: predictor.calc_soft_hyponymy_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo)
+            "predicted_score": lambda mat_hyper, mat_hypo: predictor.infer_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo)
         }
         dict_inference = self._inference(dict_inference_functions,
                                          hypernym_field_name=hypernym_field_name, hyponym_field_name=hyponym_field_name,
                                          embedding_field_name=embedding_field_name)
-        lst_pred = dict_inference["predicted_rating"]
+        lst_pred = dict_inference["predicted_score"]
 
         # get ground-truth rating
         lst_gt = self._get_specific_field_values(target_field_name=rating_field_name)
