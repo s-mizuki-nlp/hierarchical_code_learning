@@ -6,6 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from dataset.transform import FieldTypeConverter
 
 DIR_EVALSET = "/home/sakae/Windows/dataset/hypernym_detection/evalset_nguyen_2017/"
 
@@ -41,7 +42,6 @@ cfg_evaluation_datasets_ranking_retrieval = {
     }
 }
 
-
 def _relation_to_direction_class(sample):
     class_mapper = {"hyper":"x"}
     sample["class"] = class_mapper[sample["relation"]]
@@ -61,6 +61,8 @@ def _relation_to_three_classes(sample):
     class_mapper = {"hyper":"hyponymy", "rhyper":"reverse-hyponymy", "other":"other"}
     sample["class"] = class_mapper.get(sample["relation"], "other")
     return sample
+
+_rating_str_to_float = FieldTypeConverter(dict_field_type_converter={"rating":float})
 
 # evaluation dataset for classification task
 # ENTAILMENT dataset は optional. 除外してもよい
@@ -105,6 +107,7 @@ cfg_evaluation_datasets_graded_le = {
         "path": os.path.join(DIR_EVALSET, "graded_lexical_entailment/hyperlex-all.txt"),
         "header": True,
         "delimiter": " ",
+        "transform":_rating_str_to_float,
         "columns": {"hyponym":0, "hypernym":1, "pos-tag":2, "relation": 3, "rating": 4},
         "description": "HyperLex dataset: graded lexical entailment",
     }
