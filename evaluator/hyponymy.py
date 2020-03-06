@@ -144,7 +144,7 @@ class SoftHyponymyPredictor(object):
 
         return ret
 
-    def predict_hyponymy_relation_by_hponymy_propensity_score(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like, threshold: Optional[float] = None):
+    def predict_hyponymy_relation_by_hyponymy_propensity_score(self, mat_code_prob_x: array_like, mat_code_prob_y: array_like, threshold: Optional[float] = None):
         """
         it predicts what relation of the (x,y) pair holds among hyponymy, reverse-hyponymy, and other relations.
         this function is order-dependent only if (x,y) pair is either hyponymy or reverse-hyponymy relation.
