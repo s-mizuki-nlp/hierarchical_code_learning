@@ -21,7 +21,6 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                  exclude_reverse_hyponymy_from_non_hyponymy_relation: bool = True,
                  swap_hyponymy_relations: bool = False,
                  limit_hyponym_candidates_within_minibatch: bool = False,
-                 split_hyponymy_and_non_hyponymy: bool = True,
                  verbose: bool = False, **kwargs_hyponymy_dataloader):
 
         super().__init__(word_embeddings_dataset, hyponymy_dataset,
@@ -54,7 +53,6 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         self._exclude_reverse_hyponymy_from_non_hyponymy_relation = exclude_reverse_hyponymy_from_non_hyponymy_relation
         self._limit_hyponym_candidates_within_minibatch = limit_hyponym_candidates_within_minibatch
         self._swap_hyponymy_relations = swap_hyponymy_relations
-        self._split_hyponymy_and_non_hyponymy = split_hyponymy_and_non_hyponymy
         self._verbose = verbose
 
         if len(non_hyponymy_relation_target) > 1:
@@ -164,27 +162,6 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
         return lst_swap_hyponymy_samples
 
-    def _split_hyponymy_samples_and_non_hyponymy_samples(self, batch):
-        lst_hyponymy_relation = []
-        lst_hyponymy_relation_raw = []
-        lst_non_hyponymy_relation = []
-        lst_non_hyponymy_relation_raw = []
-        for relation, relation_raw  in zip(batch["hyponymy_relation"], batch["hyponymy_relation_raw"]):
-            probability = relation[2]
-            if probability == 1.0:
-                lst_hyponymy_relation.append(relation)
-                lst_hyponymy_relation_raw.append(relation_raw)
-            else:
-                lst_non_hyponymy_relation.append(relation)
-                lst_non_hyponymy_relation_raw.append(relation_raw)
-
-        batch["hyponymy_relation"] = lst_hyponymy_relation
-        batch["hyponymy_relation_raw"] = lst_hyponymy_relation_raw
-        batch["non_hyponymy_relation"] = lst_non_hyponymy_relation
-        batch["non_hyponymy_relation_raw"] = lst_non_hyponymy_relation_raw
-
-        return batch
-
     def _create_batch_from_hyponymy_samples(self, batch_hyponymy: List[Dict[str,Union[str,float]]]):
 
         # take tokens from hyponymy pairs
@@ -271,10 +248,6 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             # create (and format) a minibatch from both hyponymy samples and non-hyponymy samples
             batch = self._create_batch_from_hyponymy_samples(batch_hyponymy=batch_hyponymy)
 
-            # (optional) split hyponymy relation and non-hyponymy relation
-            if self._split_hyponymy_and_non_hyponymy:
-                batch = self._split_hyponymy_samples_and_non_hyponymy_samples(batch)
-
             return batch
 
     def __iter__(self):
@@ -299,9 +272,5 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
             # create (and format) a minibatch from both hyponymy samples and non-hyponymy samples
             batch = self._create_batch_from_hyponymy_samples(batch_hyponymy=batch_hyponymy)
-
-            # (optional) split hyponymy relation and non-hyponymy relation
-            if self._split_hyponymy_and_non_hyponymy:
-                batch = self._split_hyponymy_samples_and_non_hyponymy_samples(batch)
 
             yield batch
