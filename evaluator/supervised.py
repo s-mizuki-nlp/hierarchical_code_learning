@@ -22,6 +22,7 @@ from scipy.stats import spearmanr, kendalltau
 class BaseEvaluator(object, metaclass=ABCMeta):
 
     def __init__(self, model: AutoEncoder,
+                 hyponymy_predictor_type: str = "hyponymy_score",
                  embeddings_dataset: Optional[AbstractWordEmbeddingsDataset] = None,
                  evaluation_dataset: Optional[Dataset] = None,
                  **kwargs_dataloader):
@@ -33,6 +34,14 @@ class BaseEvaluator(object, metaclass=ABCMeta):
         if evaluation_dataset is not None:
             self._evaluation_dataset = evaluation_dataset
             self._evaluation_data_loader = DataLoader(evaluation_dataset, **kwargs_dataloader)
+
+        if hyponymy_predictor_type == "hyponymy_score":
+            self._hyponymy_predictor_class = HyponymyScoreBasedPredictor
+        elif hyponymy_predictor_type == "entailment_probability":
+            self._hyponymy_predictor_class = EntailmentProbabilityBasedPredictor
+        else:
+            valid_hyponymy_predictor_type = ("hyponymy_score", "entailment_probability")
+            raise ValueError(f"`hyponymy_predictor_type` must be: {','.join(valid_hyponymy_predictor_type)}")
 
         self._default_evaluator = {
             "accuracy": lambda y_true, y_pred, **kwargs: accuracy_score(y_true, y_pred),
@@ -155,7 +164,7 @@ class HyponymyDirectionalityEvaluator(BaseEvaluator):
                 evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
                 **kwargs_for_metric_function):
 
-        predictor = HyponymyScoreBasedPredictor()
+        predictor = self._hyponymy_predictor_class()
         evaluator = self._default_evaluator if evaluator is None else evaluator
 
         # do prediction
@@ -208,7 +217,7 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
         return ret
 
     def _optimal_threshold(self, lst_gt, lst_score, **kwargs):
-        predictor = HyponymyScoreBasedPredictor()
+        predictor = self._hyponymy_predictor_class()
         ret = predictor.calc_optimal_threshold_accuracy(y_true=lst_gt, probas_pred=lst_score, verbose=True)
         return ret
 
@@ -221,7 +230,7 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
                 evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
                 **kwargs_for_metric_function):
 
-        predictor = HyponymyScoreBasedPredictor(threshold=threshold_soft_hyponymy_score)
+        predictor = self._hyponymy_predictor_class(threshold=threshold_soft_hyponymy_score)
         evaluator = self._default_evaluator if evaluator is None else evaluator
 
         # do prediction
@@ -284,7 +293,7 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
         return ret
 
     def _optimal_threshold(self, lst_gt, lst_score, **kwargs):
-        predictor = HyponymyScoreBasedPredictor()
+        predictor = self._hyponymy_predictor_class()
         ret = predictor.calc_optimal_threshold_accuracy(y_true=lst_gt, probas_pred=lst_score, verbose=True)
         return ret
 
@@ -298,7 +307,7 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
                  **kwargs_for_metric_function):
 
         evaluator = self._default_evaluator if evaluator is None else evaluator
-        predictor = HyponymyScoreBasedPredictor(threshold=threshold_soft_hyponymy_score)
+        predictor = self._hyponymy_predictor_class(threshold=threshold_soft_hyponymy_score)
 
         # do prediction
         dict_inference_functions = {
@@ -362,7 +371,7 @@ class GradedLexicalEntailmentEvaluator(BaseEvaluator):
                  **kwargs_for_metric_function):
 
         evaluator = self._default_evaluator if evaluator is None else evaluator
-        predictor = HyponymyScoreBasedPredictor()
+        predictor = self._hyponymy_predictor_class()
 
         # do prediction
         dict_inference_functions = {
