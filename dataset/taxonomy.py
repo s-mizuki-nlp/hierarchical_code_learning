@@ -15,8 +15,7 @@ import math
 import random
 
 from .lexical_knowledge import HyponymyDataset
-
-
+from ._taxonomy_experiment import BasicHyponymyPairSet
 
 class BasicTaxonomy(object):
 
@@ -426,6 +425,7 @@ class WordNetTaxonomy(BasicTaxonomy):
     @property
     def n_nodes_max(self):
         return max(map(len, self._nodes.values()))
+
 
 class SynsetAwareWordnetTaxonomy(WordNetTaxonomy):
 
