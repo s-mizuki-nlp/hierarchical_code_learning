@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import torch
 from . import utils
-from model.loss_supervised import HyponymyScoreLoss
+from model.loss_supervised import HyponymyScoreLoss, EntailmentProbabilityLoss
 
 
 class HyponymyScoreLossLayer(unittest.TestCase):
@@ -167,5 +167,75 @@ class HyponymyScoreLossLayer(unittest.TestCase):
         print(y_true)
         expected = np.mean((y_pred - y_true)**2) # L2 loss
         actual = self._loss_layer.forward(t_test, lst_train)
+
+        self.assertTrue(np.allclose(expected, actual))
+
+
+class EntailmentProbabilityLossLayer(unittest.TestCase):
+
+    _EPS = 1E-5
+
+    def setUp(self) -> None:
+
+        n_ary = 6
+        n_digits = 4
+        tau = 4.0
+
+        self._n_ary = n_ary
+        self._n_digits = n_digits
+
+        vec_p_x_zero = np.array([0.02,0.05,0.8,0.8])
+        vec_x_repr = np.array([1,2,0,0])
+        vec_p_y_zero = np.array([0.02,0.05,0.1,0.6])
+        vec_y_repr = np.array([1,2,3,0])
+        mat_p_x_1 = utils.generate_probability_matrix(vec_p_x_zero, vec_x_repr, n_digits, n_ary, tau)
+        mat_p_y_1 = utils.generate_probability_matrix(vec_p_y_zero, vec_y_repr, n_digits, n_ary, tau)
+
+        vec_p_x_zero = np.array([0.02,0.05,0.05,0.8])
+        vec_x_repr = np.array([1,2,3,0])
+        vec_p_y_zero = np.array([0.02,0.05,0.6,0.6])
+        vec_y_repr = np.array([1,2,0,0])
+        mat_p_x_2 = utils.generate_probability_matrix(vec_p_x_zero, vec_x_repr, n_digits, n_ary, tau)
+        mat_p_y_2 = utils.generate_probability_matrix(vec_p_y_zero, vec_y_repr, n_digits, n_ary, tau)
+
+        vec_p_x_zero = np.array([0.02,0.02,0.02,0.02])
+        vec_x_repr = np.array([2,2,3,3])
+        vec_p_y_zero = np.array([0.02,0.02,0.02,0.02])
+        vec_y_repr = np.array([1,1,2,2])
+        mat_p_x_3 = utils.generate_probability_matrix(vec_p_x_zero, vec_x_repr, n_digits, n_ary, tau)
+        mat_p_y_3 = utils.generate_probability_matrix(vec_p_y_zero, vec_y_repr, n_digits, n_ary, tau)
+
+        # x:hypernym, y:hyponym
+        # arry_p_*: (n_batch, n_dim, n_ary)
+        self._arry_p_batch = np.stack([mat_p_x_1, mat_p_x_2, mat_p_x_3, mat_p_y_1, mat_p_y_2, mat_p_y_3])
+        # train_signal: (hypernym_index, hyponym_index, is_hyponymy)
+        self._lst_hyponymy_tuples = [(0, 3, 1.0), (1, 4, 0.0), (2, 5, 0.0)] # [(x1, y1, True), (x2, y2, False), (x3, y3, False)]
+
+        self._t_arry_p_batch = torch.from_numpy(self._arry_p_batch)
+
+        self._scale = 1.5
+        self._reduction = "mean"
+        self._loss_layer = EntailmentProbabilityLoss(scale=self._scale, reduction=self._reduction)
+
+    def test_loss_value(self):
+
+        t_test = self._t_arry_p_batch
+        lst_train = self._lst_hyponymy_tuples
+
+        lst_loss_gt = []
+        for idx_x, idx_y, y_xy in self._lst_hyponymy_tuples:
+            mat_prob_c_x = self._arry_p_batch[idx_x]
+            mat_prob_c_y = self._arry_p_batch[idx_y]
+            p_xy = utils.calc_ancestor_probability(mat_prob_c_x, mat_prob_c_y)
+            loss_xy = y_xy * np.log(p_xy) + (1-y_xy)*np.log(1-p_xy)
+            lst_loss_gt.append(loss_xy)
+
+        if self._reduction == "mean":
+            loss_gt = - np.mean(lst_loss_gt) * self._scale
+        else:
+            loss_gt = - np.sum(lst_loss_gt) * self._scale
+
+        expected = loss_gt
+        actual = self._loss_layer.forward(t_test, lst_train).item()
 
         self.assertTrue(np.allclose(expected, actual))

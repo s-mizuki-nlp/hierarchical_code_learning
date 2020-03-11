@@ -42,6 +42,8 @@ class CodeLengthPredictionLoss(L._Loss):
             self._func_distance = self._cosine_distance
         elif distance_metric == "hinge":
             self._func_distance = self._hinge_distance
+        elif distance_metric == "binary-cross-entropy":
+            self._func_distance = self._bce
         else:
             raise AttributeError(f"unsupported distance metric was specified: {distance_metric}")
 
@@ -108,6 +110,9 @@ class CodeLengthPredictionLoss(L._Loss):
             return hinge_loss
         else:
             raise NotImplementedError(f"unsupported reduction method was specified: {self.reduction}")
+
+    def _bce(self, u, v) -> torch.Tensor:
+        return F.binary_cross_entropy(u, v, reduction=self.reduction)
 
     def _intensity_to_probability(self, t_intensity):
         # t_intensity can be either one or two dimensional tensor.
@@ -339,6 +344,42 @@ class LowestCommonAncestorLengthPredictionLoss(HyponymyScoreLoss):
             y_pred /= n_digits
             # scale ground-truth value by the user-specified value.
             y_true *= self._normalize_coef_for_gt
+
+        loss = self._func_distance(y_pred, y_true)
+
+        return loss * self._scale
+
+
+class EntailmentProbabilityLoss(HyponymyScoreLoss):
+
+    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean') -> None:
+
+        super(EntailmentProbabilityLoss, self).__init__(scale=scale,
+                    distance_metric="binary-cross-entropy",
+                    size_average=size_average, reduce=reduce, reduction=reduction)
+
+    def forward(self, t_prob_c_batch: torch.Tensor, lst_hyponymy_tuple: List[Tuple[int, int, float]]) -> torch.Tensor:
+        """
+        evaluates loss of the predicted hyponymy score and true hyponymy score.
+
+        :param t_prob_c_batch: probability array. shape: (n_batch, n_digits, n_ary), t_prob_c_batch[b,n,m] = p(c_n=m|x_b)
+        :param lst_hyponymy_tuple: list of (hypernym index, hyponym index, hyponymy(=1.0) or not(=0.0)) tuples
+        """
+
+        # x: hypernym, y: hyponym
+        dtype, device = self._dtype_and_device(t_prob_c_batch)
+
+        # clamp values so that it won't produce nan value.
+        t_prob_c_batch = torch.clamp(t_prob_c_batch, min=1E-5, max=(1.0-1E-5))
+
+        t_idx_x = torch.tensor([tup[0] for tup in lst_hyponymy_tuple], dtype=torch.long, device=device)
+        t_idx_y = torch.tensor([tup[1] for tup in lst_hyponymy_tuple], dtype=torch.long, device=device)
+        y_true = torch.tensor([tup[2] for tup in lst_hyponymy_tuple], dtype=dtype, device=device)
+
+        t_prob_c_x = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_x)
+        t_prob_c_y = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_y)
+
+        y_pred = self.calc_ancestor_probability(t_prob_c_x, t_prob_c_y)
 
         loss = self._func_distance(y_pred, y_true)
 
