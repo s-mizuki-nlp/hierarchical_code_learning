@@ -358,12 +358,25 @@ class EntailmentProbabilityLoss(HyponymyScoreLoss):
                     distance_metric="binary-cross-entropy",
                     size_average=size_average, reduce=reduce, reduction=reduction)
 
+    def calc_synonym_probability(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
+        n_digits, n_ary = t_prob_c_x.shape[-2:]
+        dtype, device = self._dtype_and_device(t_prob_c_x)
+
+        # t_gamma: (n_batch, n_digits)
+        # t_gamma[b][d] = \sum_{a}(p_x(C_d=a)*p_y(C_d=a))
+        t_gamma = torch.sum(t_prob_c_x*t_prob_c_y, dim=-1)
+        # t_prob: (n_batch,)
+        # t_prob[b] = \prod_{d}t_gamma[b][d]
+        t_prob = torch.prod(t_gamma, dim=-1)
+
+        return t_prob
+
     def forward(self, t_prob_c_batch: torch.Tensor, lst_hyponymy_tuple: List[Tuple[int, int, float]]) -> torch.Tensor:
         """
         evaluates loss of the predicted hyponymy score and true hyponymy score.
 
         :param t_prob_c_batch: probability array. shape: (n_batch, n_digits, n_ary), t_prob_c_batch[b,n,m] = p(c_n=m|x_b)
-        :param lst_hyponymy_tuple: list of (hypernym index, hyponym index, hyponymy(=1.0) or not(=0.0)) tuples
+        :param lst_hyponymy_tuple: list of (hypernym index, hyponym index, hyponymy score) tuples
         """
 
         # x: hypernym, y: hyponym
@@ -374,13 +387,31 @@ class EntailmentProbabilityLoss(HyponymyScoreLoss):
 
         t_idx_x = torch.tensor([tup[0] for tup in lst_hyponymy_tuple], dtype=torch.long, device=device)
         t_idx_y = torch.tensor([tup[1] for tup in lst_hyponymy_tuple], dtype=torch.long, device=device)
-        y_true = torch.tensor([tup[2] for tup in lst_hyponymy_tuple], dtype=dtype, device=device)
+        y_hyponymy_score = torch.tensor([tup[2] for tup in lst_hyponymy_tuple], dtype=dtype, device=device)
 
         t_prob_c_x = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_x)
         t_prob_c_y = torch.index_select(t_prob_c_batch, dim=0, index=t_idx_y)
 
-        y_pred = self.calc_ancestor_probability(t_prob_c_x, t_prob_c_y)
+        y_prob_entail = self.calc_ancestor_probability(t_prob_c_x, t_prob_c_y)
+        y_prob_synonym = self.calc_synonym_probability(t_prob_c_x, t_prob_c_y)
+        y_prob_other = 1.0 - (y_prob_entail+y_prob_synonym)
 
-        loss = self._func_distance(y_pred, y_true)
+        # clamp values so that it won't produce nan value.
+        y_prob_entail = torch.clamp(y_prob_entail, min=1E-5, max=(1.0-1E-5))
+        y_prob_synonym = torch.clamp(y_prob_synonym, min=1E-5, max=(1.0-1E-5))
+        y_prob_other = torch.clamp(y_prob_other, min=1E-5, max=(1.0-1E-5))
+
+        t_nll = (y_hyponymy_score >= 1.0).float()*torch.log(y_prob_entail) + \
+                (y_hyponymy_score == 0.0).float()*torch.log(y_prob_synonym) + \
+                (y_hyponymy_score <= -1.0).float()*torch.log(y_prob_other)
+        t_nll = -1.0 * t_nll
+
+        # reduction
+        if self.reduction == "sum":
+            loss = torch.sum(t_nll)
+        elif self.reduction.endswith("mean"):
+            loss = torch.mean(t_nll)
+        elif self.reduction == "none":
+            loss = t_nll
 
         return loss * self._scale

@@ -72,6 +72,12 @@ def calc_ancestor_probability(mat_prob_c_x, mat_prob_c_y):
     ret = np.sum(vec_beta*np.cumprod(vec_gamma))
     return ret
 
+def calc_synonym_probability(mat_prob_c_x, mat_prob_c_y):
+    # ret = \prod_{d}\sum_{a}p_x[d][a]*p_y[d][a]
+    vec_gamma = np.sum(mat_prob_c_x*mat_prob_c_y, axis=-1)
+    ret = np.prod(vec_gamma, axis=-1)
+    return ret
+
 def calc_soft_lowest_common_ancestor_length(mat_prob_c_x, mat_prob_c_y):
     n_digits, n_ary = mat_prob_c_x.shape
     vec_intensity = np.zeros(n_digits, dtype=np.float32)
