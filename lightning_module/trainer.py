@@ -351,7 +351,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
             self._loss_hyponymy.reduction = cache
             n_sample = len(lst_tup_hyponymy)
             for l, (u, v, distance) in zip(lst_loss_hyponymy, lst_tup_hyponymy):
-                if distance < 0:
+                if distance <= 0:
                     loss_non_hyponymy += (l / n_sample)
                     loss_hyponymy -= (l / n_sample)
 
