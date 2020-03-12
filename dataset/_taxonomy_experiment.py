@@ -9,6 +9,7 @@ from typing import Optional, Iterable, Tuple, Set, Type, List, Dict, Callable, U
 from collections import defaultdict
 import numpy as np
 import math
+from functools import lru_cache
 
 from .lexical_knowledge import HyponymyDataset
 
@@ -61,6 +62,7 @@ class BasicHyponymyPairSet(object):
     def hyponyms(self, entity):
         return self.trainset_descendants.get(entity, set())
 
+    @lru_cache(maxsize=100000)
     def hypernyms_and_hyponyms_and_self(self, entity):
         return self.hyponyms(entity) | self.hypernyms(entity) | {entity}
 
