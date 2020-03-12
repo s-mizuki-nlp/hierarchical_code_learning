@@ -167,7 +167,7 @@ class UnsupervisedTrainer(pl.LightningModule):
         checkpoint["model_dump"] = pickle.dumps(self._model)
 
     @classmethod
-    def load_model_from_checkpoint(self, weights_path: str, on_gpu, map_location=None):
+    def load_model_from_checkpoint(self, weights_path: str, on_gpu: bool, map_location=None):
         if on_gpu:
             if map_location is not None:
                 checkpoint = torch.load(weights_path, map_location=map_location)
