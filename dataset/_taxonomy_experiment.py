@@ -62,7 +62,6 @@ class BasicHyponymyPairSet(object):
     def hyponyms(self, entity):
         return self.trainset_descendants.get(entity, set())
 
-    @lru_cache(maxsize=100000)
     def hypernyms_and_hyponyms_and_self(self, entity):
         return self.hyponyms(entity) | self.hypernyms(entity) | {entity}
 
@@ -133,3 +132,82 @@ class BasicHyponymyPairSet(object):
 
         return ret
 
+
+class WordNetHyponymyPairSet(BasicHyponymyPairSet):
+
+    def __init__(self, hyponymy_dataset: HyponymyDataset):
+
+        # build taxonomy as for each part-of-speech tags as DAG
+        dict_iter_trainset_pairs = defaultdict(list)
+        for record in hyponymy_dataset:
+            entity_type = record["pos"]
+            entity_hyper = record["hypernym"]
+            entity_hypo = record["hyponym"]
+            dict_iter_trainset_pairs[entity_type].append((entity_hyper, entity_hypo))
+
+        self.record_ancestors_and_descendants(dict_iter_trainset_pairs)
+        self._random_number_generator = self._random_number_generator_iterator(max_value=self.n_nodes_max)
+
+    def record_ancestors_and_descendants(self, dict_iter_hyponymy_pairs):
+        self._trainset_ancestors = defaultdict(lambda :defaultdict(set))
+        self._trainset_descendants = defaultdict(lambda :defaultdict(set))
+        for entity_type, iter_hyponymy_pairs in dict_iter_hyponymy_pairs.items():
+            for hypernym, hyponym in iter_hyponymy_pairs:
+                self._trainset_ancestors[entity_type][hyponym].add(hypernym)
+                self._trainset_descendants[entity_type][hypernym].add(hyponym)
+
+        # create tuple of entities as nodes
+        nodes = {}
+        for entity_type in dict_iter_hyponymy_pairs.keys():
+            nodes[entity_type] = tuple(set(self._trainset_ancestors[entity_type].keys()) | set(self._trainset_descendants[entity_type].keys()))
+        self._nodes = nodes
+
+        # unset active entity type
+        self._active_entity_type = None
+
+    @property
+    def ACTIVE_ENTITY_TYPE(self):
+        return self._active_entity_type
+
+    @ACTIVE_ENTITY_TYPE.setter
+    def ACTIVE_ENTITY_TYPE(self, value):
+        if value is not None:
+            self._active_entity_type = value
+
+    @property
+    def entity_types(self):
+        return set(self._trainset_ancestors.keys())
+
+    @property
+    def trainset_ancestors(self):
+        return self._trainset_ancestors.get(self.ACTIVE_ENTITY_TYPE, self._trainset_ancestors)
+
+    @property
+    def trainset_descendants(self):
+        return self._trainset_descendants.get(self.ACTIVE_ENTITY_TYPE, self._trainset_descendants)
+
+    @property
+    def nodes(self):
+        return self._nodes.get(self.ACTIVE_ENTITY_TYPE, self._nodes)
+
+    @property
+    def n_nodes_max(self):
+        return max(map(len, self._nodes.values()))
+
+    def sample_random_hypernyms(self, entity: str, candidates: Optional[Iterable[str]] = None,
+                                size: int = 1, exclude_hypernyms: bool = True, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
+        return super().sample_random_hypernyms(entity, candidates, size, exclude_hypernyms)
+
+    def sample_random_hyponyms(self, entity: str, candidates: Optional[Iterable[str]] = None,
+                               size: int = 1, exclude_hypernyms: bool = True, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
+        return super().sample_random_hyponyms(entity, candidates, size, exclude_hypernyms)
+
+    def is_in_dataset(self, entity, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
+        return super().is_in_dataset(entity)
+
+    def is_hyponymy_relation(self, hypernym, hyponym, include_reverse_hyponymy: bool = True, not_exists = None, **kwargs):
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
+        return super().is_hyponymy_relation(hypernym, hyponym, include_reverse_hyponymy, not_exists)

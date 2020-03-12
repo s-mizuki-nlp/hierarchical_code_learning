@@ -9,7 +9,7 @@ import numpy as np
 
 from .word_embeddings import AbstractWordEmbeddingsDataset
 from .lexical_knowledge import HyponymyDataset, WordNetHyponymyDataset
-from .taxonomy import BasicHyponymyPairSet
+from .taxonomy import BasicHyponymyPairSet, WordNetHyponymyPairSet
 from .embeddings_plus_lexical_knowledge import WordEmbeddingsAndHyponymyDataset
 
 
@@ -30,7 +30,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
         # overwrite the taxonomy that was built by superclass
         if isinstance(hyponymy_dataset, WordNetHyponymyDataset):
-            raise NotImplementedError(f"not implemented it yet.")
+            self._taxonomy = WordNetHyponymyPairSet(hyponymy_dataset=hyponymy_dataset)
         elif isinstance(hyponymy_dataset, HyponymyDataset):
             self._taxonomy = BasicHyponymyPairSet(hyponymy_dataset=hyponymy_dataset)
         else:

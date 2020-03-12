@@ -15,7 +15,7 @@ import math
 import random
 
 from .lexical_knowledge import HyponymyDataset
-from ._taxonomy_experiment import BasicHyponymyPairSet
+from ._taxonomy_experiment import BasicHyponymyPairSet, WordNetHyponymyPairSet
 
 class BasicTaxonomy(object):
 
