@@ -359,8 +359,6 @@ class EntailmentProbabilityLoss(HyponymyScoreLoss):
                     size_average=size_average, reduce=reduce, reduction=reduction)
 
     def calc_synonym_probability(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
-        n_digits, n_ary = t_prob_c_x.shape[-2:]
-        dtype, device = self._dtype_and_device(t_prob_c_x)
 
         # t_gamma: (n_batch, n_digits)
         # t_gamma[b][d] = \sum_{a}(p_x(C_d=a)*p_y(C_d=a))
