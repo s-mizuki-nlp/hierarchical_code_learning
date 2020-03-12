@@ -117,14 +117,19 @@ class BasicHyponymyPairSet(object):
 
         return lst_ret
 
+    def is_in_dataset(self, entity, **kwargs):
+        ret = (entity in self.trainset_ancestors) or (entity in self.trainset_descendants)
+        return ret
+
     def is_hyponymy_relation(self, hypernym, hyponym, include_reverse_hyponymy: bool = True, not_exists = None, **kwargs):
-        if (hypernym not in self.nodes) or (hyponym not in self.nodes):
+        if not (self.is_in_dataset(hypernym) and self.is_in_dataset(hyponym)):
             return not_exists
 
         if include_reverse_hyponymy:
-            candidates = self.hyponyms(hypernym) | self.hypernyms(hypernym)
+            candidates = self.hypernyms(hypernym) | self.hyponyms(hypernym)
         else:
             candidates = self.hyponyms(hypernym)
         ret = hyponym in candidates
 
         return ret
+

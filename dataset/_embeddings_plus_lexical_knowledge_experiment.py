@@ -141,10 +141,8 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             dist_orig = hyponymy["distance"]
             pos = hyponymy.get("pos", None)
 
-            if dist_orig == 1.0:
-                dist_rev = -1.0
-            elif dist_orig == 0.0:
-                dist_rev = 0.0
+            if dist_orig >= 0.0:
+                dist_rev = - dist_orig
             else:
                 is_hyponymy_relation = self._taxonomy.is_hyponymy_relation(hypernym=hyper_rev, hyponym=hypo_rev, part_of_speech=pos,
                                                                            include_reverse_hyponymy=False, not_exists=None)
