@@ -143,6 +143,8 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
             if dist_orig == 1.0:
                 dist_rev = -1.0
+            elif dist_orig == 0.0:
+                dist_rev = 0.0
             else:
                 is_hyponymy_relation = self._taxonomy.is_hyponymy_relation(hypernym=hyper_rev, hyponym=hypo_rev, part_of_speech=pos,
                                                                            include_reverse_hyponymy=False, not_exists=None)
@@ -197,9 +199,9 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         iter_hyponymy_score = (hyponymy["distance"] for hyponymy in batch_hyponymy)
         ## convert hyponymy score into entailment probability
         ## if hyponymy score is greater than 1.0, then entailment probability is 1.0. otherwise, 0.0.
-        iter_entailment_probability = (1.0 if hyponymy_score >= 1.0 else 0.0 for hyponymy_score in iter_hyponymy_score)
+        # iter_entailment_probability = (1.0 if hyponymy_score >= 1.0 else 0.0 for hyponymy_score in iter_hyponymy_score)
 
-        lst_hyponymy_relation = [tup for tup in zip(iter_idx_hyper, iter_idx_hypo, iter_entailment_probability)]
+        lst_hyponymy_relation = [tup for tup in zip(iter_idx_hyper, iter_idx_hypo, iter_hyponymy_score)]
 
         batch = {
             "embedding": mat_embeddings,
