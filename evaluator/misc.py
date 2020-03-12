@@ -140,7 +140,8 @@ class WordNetHyponymyScoreDiffEvaluator(BaseEvaluator):
                  evaluation_dataset: Optional[Dataset] = None,
                  **kwargs_dataloader):
 
-        super().__init__(model, embeddings_dataset, evaluation_dataset, **kwargs_dataloader)
+        super().__init__(model=model, hyponymy_predictor_type="hyponymy_score",
+                         embeddings_dataset=embeddings_dataset, evaluation_dataset=evaluation_dataset, **kwargs_dataloader)
         self._taxonomy = taxonomy
 
     def _update_task_specific_evaluator(self):
