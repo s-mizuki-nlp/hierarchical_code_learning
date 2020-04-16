@@ -209,7 +209,7 @@ class EntailmentProbabilityLossLayer(unittest.TestCase):
         # arry_p_*: (n_batch, n_dim, n_ary)
         self._arry_p_batch = np.stack([mat_p_x_1, mat_p_x_2, mat_p_x_3, mat_p_y_1, mat_p_y_2, mat_p_y_3])
         # train_signal: (hypernym_index, hyponym_index, is_hyponymy)
-        self._lst_hyponymy_tuples = [(0, 3, 1.0), (1, 4, 0.0), (2, 5, 0.0)] # [(x1, y1, True), (x2, y2, False), (x3, y3, False)]
+        self._lst_hyponymy_tuples = [(0, 3, 1.0), (1, 4, -1.0), (2, 5, -1.0)] # [(x1, y1, True), (x2, y2, False), (x3, y3, False)]
 
         self._t_arry_p_batch = torch.from_numpy(self._arry_p_batch)
 
@@ -226,8 +226,12 @@ class EntailmentProbabilityLossLayer(unittest.TestCase):
         for idx_x, idx_y, y_xy in self._lst_hyponymy_tuples:
             mat_prob_c_x = self._arry_p_batch[idx_x]
             mat_prob_c_y = self._arry_p_batch[idx_y]
-            p_xy = utils.calc_ancestor_probability(mat_prob_c_x, mat_prob_c_y)
-            loss_xy = y_xy * np.log(p_xy) + (1-y_xy)*np.log(1-p_xy)
+            p_alpha = utils.calc_ancestor_probability(mat_prob_c_x, mat_prob_c_y)
+            p_beta = utils.calc_synonym_probability(mat_prob_c_x, mat_prob_c_y)
+            if y_xy == 1.0:
+                loss_xy = np.log(p_alpha)
+            elif y_xy == -1.0:
+                loss_xy = np.log(1-p_alpha-p_beta)
             lst_loss_gt.append(loss_xy)
 
         if self._reduction == "mean":
@@ -237,5 +241,5 @@ class EntailmentProbabilityLossLayer(unittest.TestCase):
 
         expected = loss_gt
         actual = self._loss_layer.forward(t_test, lst_train).item()
-
+        
         self.assertTrue(np.allclose(expected, actual))

@@ -95,10 +95,11 @@ def calc_soft_hyponymy_score(mat_prob_c_x, mat_prob_c_y):
     vec_prob_c_x_zero = mat_prob_c_x[:,0]
     vec_prob_c_y_zero = mat_prob_c_y[:,0]
     alpha = calc_ancestor_probability(mat_prob_c_x, mat_prob_c_y)
+    beta = calc_synonym_probability(mat_prob_c_x, mat_prob_c_y)
     l_lca = calc_soft_lowest_common_ancestor_length(mat_prob_c_x, mat_prob_c_y)
     l_hyper = calc_soft_code_length(vec_prob_c_x_zero)
     l_hypo = calc_soft_code_length(vec_prob_c_y_zero)
-    score = alpha*(l_hypo - l_hyper) + (1.-alpha)*(l_lca - l_hyper)
+    score = alpha*(l_hypo - l_hyper) + (1.-alpha-beta)*(l_lca - l_hyper)
 
     return score
 
