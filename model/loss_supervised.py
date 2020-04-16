@@ -272,10 +272,12 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         l_hypo = self.calc_soft_code_length(t_prob_c_y)
         # alpha = probability of hyponymy relation
         alpha = self.calc_ancestor_probability(t_prob_c_x, t_prob_c_y)
+        # beta = probability of identity relation
+        beta = self.calc_synonym_probability(t_prob_c_x, t_prob_c_y)
         # l_lca = length of the lowest common ancestor
         l_lca = self.calc_soft_lowest_common_ancestor_length(t_prob_c_x, t_prob_c_y)
 
-        score = alpha * (l_hypo - l_hyper) + (1. - alpha) * (l_lca - l_hyper)
+        score = alpha * (l_hypo - l_hyper) + (1. - (alpha + beta)) * (l_lca - l_hyper)
 
         return score
 
@@ -313,6 +315,17 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
         loss = self._func_distance(y_pred, y_true)
 
         return loss * self._scale
+
+    def calc_synonym_probability(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
+
+        # t_gamma: (n_batch, n_digits)
+        # t_gamma[b][d] = \sum_{a}(p_x(C_d=a)*p_y(C_d=a))
+        t_gamma = torch.sum(t_prob_c_x*t_prob_c_y, dim=-1)
+        # t_prob: (n_batch,)
+        # t_prob[b] = \prod_{d}t_gamma[b][d]
+        t_prob = torch.prod(t_gamma, dim=-1)
+
+        return t_prob
 
 
 class LowestCommonAncestorLengthPredictionLoss(HyponymyScoreLoss):
@@ -357,17 +370,6 @@ class EntailmentProbabilityLoss(HyponymyScoreLoss):
         super(EntailmentProbabilityLoss, self).__init__(scale=scale,
                     distance_metric="binary-cross-entropy",
                     size_average=size_average, reduce=reduce, reduction=reduction)
-
-    def calc_synonym_probability(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
-
-        # t_gamma: (n_batch, n_digits)
-        # t_gamma[b][d] = \sum_{a}(p_x(C_d=a)*p_y(C_d=a))
-        t_gamma = torch.sum(t_prob_c_x*t_prob_c_y, dim=-1)
-        # t_prob: (n_batch,)
-        # t_prob[b] = \prod_{d}t_gamma[b][d]
-        t_prob = torch.prod(t_gamma, dim=-1)
-
-        return t_prob
 
     def forward(self, t_prob_c_batch: torch.Tensor, lst_hyponymy_tuple: List[Tuple[int, int, float]]) -> torch.Tensor:
         """
