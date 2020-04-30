@@ -6,7 +6,8 @@ from __future__ import division
 from __future__ import print_function
 
 import warnings
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
+import copy
 import inspect
 import torch
 from torch import nn
@@ -59,13 +60,21 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         "n_layer":3,
         "activation_function":F.relu,
     }
+    _kwargs_code_length_predictor = {
+        "n_mlp_layer":3,
+        "assign_nonzero_value_on_most_significant_digit":False,
+        "init_code_length":None
+    }
 
     def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int,
                  n_dim_hidden: Optional[int] = None,
                  internal_layer_class: Optional[nn.Module] = None,
                  code_length_predictor_class: Optional[nn.Module] = None,
                  dtype=torch.float32,
-                 **kwargs_for_code_length_predictor):
+                 kwargs_code_length_predictor: Optional[Dict[str, Any]] = None,
+                 kwargs_stacked_lstm_layer: Optional[Dict[str, Any]] = None,
+                 kwargs_multi_dense_layer: Optional[Dict[str, Any]] = None,
+                 **kwargs):
 
         super(SimpleEncoder, self).__init__()
 
@@ -78,9 +87,24 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         self._internal_layer_class = internal_layer_class
         self._n_ary_internal = None
 
-        self._build(**kwargs_for_code_length_predictor)
+        self._build(kwargs_code_length_predictor, kwargs_stacked_lstm_layer, kwargs_multi_dense_layer)
 
-    def _build(self, **kwargs_for_code_length_predictor):
+    def _build(self, kwargs_code_length_predictor_: Optional[Dict[str, Any]] = None,
+                kwargs_stacked_lstm_layer_: Optional[Dict[str, Any]] = None,
+                kwargs_multi_dense_layer_: Optional[Dict[str, Any]] = None):
+
+        # update default parameters
+        kwargs_multi_dense_layer = copy.deepcopy(self._kwargs_multi_dense_layer)
+        if isinstance(kwargs_multi_dense_layer_, dict):
+            kwargs_multi_dense_layer.update(kwargs_multi_dense_layer_)
+
+        kwargs_stacked_lstm_layer = copy.deepcopy(self._kwargs_stacked_lstm_layer)
+        if isinstance(kwargs_stacked_lstm_layer_, dict):
+            kwargs_stacked_lstm_layer.update(kwargs_stacked_lstm_layer_)
+
+        kwargs_code_length_predictor = copy.deepcopy(self._kwargs_code_length_predictor)
+        if isinstance(kwargs_code_length_predictor_, dict):
+            kwargs_code_length_predictor.update(kwargs_code_length_predictor_)
 
         # x -> h: h = tanh(W*x+b)
         self.x_to_h = nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden)
@@ -94,12 +118,12 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         elif ScheduledSoftmaxBasedCDFEstimator in inspect.getmro(self._code_length_predictor_class):
             self.code_length_predictor = ScheduledSoftmaxBasedCDFEstimator(n_dim_input=self._n_dim_emb, n_output=self._n_digits,
                                                                            dtype=self._dtype,
-                                                                           **kwargs_for_code_length_predictor)
+                                                                           **kwargs_code_length_predictor)
             self._n_ary_internal = self._n_ary - 1
         elif SoftmaxBasedCDFEstimator in inspect.getmro(self._code_length_predictor_class):
             self.code_length_predictor = SoftmaxBasedCDFEstimator(n_dim_input=self._n_dim_emb, n_output=self._n_digits,
                                                                   dtype=self._dtype,
-                                                                  **kwargs_for_code_length_predictor)
+                                                                  **kwargs_code_length_predictor)
             self._n_ary_internal = self._n_ary - 1
         else:
             raise NotImplementedError(f"unsupported layer was specified: {self._code_length_predictor_class.__class__}")
@@ -111,13 +135,13 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         elif MultiDenseLayer in inspect.getmro(self._internal_layer_class):
             lst_layers = []
             for _ in range(self._n_digits):
-                l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, bias=False, **self._kwargs_multi_dense_layer)
+                l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, bias=False, **kwargs_multi_dense_layer)
                 lst_layers.append(l)
         elif StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
             l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_seq_len=self._n_digits,
-                                 **self._kwargs_stacked_lstm_layer)
+                                 **kwargs_stacked_lstm_layer)
             if self._n_ary_internal == self._n_ary:
-                init_code_length = kwargs_for_code_length_predictor.get("init_code_length", None)
+                init_code_length = kwargs_code_length_predictor.get("init_code_length", None)
                 if init_code_length is None:
                     pass
                 elif init_code_length == "min":
@@ -164,8 +188,11 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         return t_prob_c
 
     @property
-    def opts_stacked_lstm_layer(self):
-        return self._kwargs_stacked_lstm_layer
+    def opts_internal_layers(self):
+        ret = {}
+        for attribute_names in ("_kwargs_stacked_lstm_layer", "_kwargs_code_length_predictor", "_kwargs_multi_dense_layer"):
+            ret[attribute_names[1:]] = getattr(self, attribute_names, {})
+        return ret
 
     @property
     def gate_open_ratio(self):
