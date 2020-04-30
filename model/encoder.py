@@ -52,7 +52,8 @@ class CodeLengthAwareEncoder(SimpleEncoder):
 
     _kwargs_stacked_lstm_layer = {
         "time_distributed":True,
-        "n_layer":1
+        "n_layer":1,
+        "bidirectional":False
     }
     _kwargs_multi_dense_layer = {
         "n_layer":3,
@@ -161,6 +162,10 @@ class CodeLengthAwareEncoder(SimpleEncoder):
             raise ValueError(f"unexpected internal value: {self._n_ary_internal}")
 
         return t_prob_c
+
+    @property
+    def opts_stacked_lstm_layer(self):
+        return self._kwargs_stacked_lstm_layer
 
     @property
     def gate_open_ratio(self):
