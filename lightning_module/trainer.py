@@ -93,7 +93,7 @@ class UnsupervisedTrainer(pl.LightningModule):
         self._update_loss_parameters(current_step, verbose=False)
 
         # forward computation
-        t_x = data_batch["embedding"]
+        t_x = data_batch["embedding"].squeeze(dim=0)
         t_latent_code, t_code_prob, t_x_dash = self._model.forward(t_x)
 
         # (required) reconstruction loss
@@ -130,7 +130,7 @@ class UnsupervisedTrainer(pl.LightningModule):
     def validation_step(self, data_batch, batch_nb):
 
         # forward computation without back-propagation
-        t_x = data_batch["embedding"]
+        t_x = data_batch["embedding"].squeeze(dim=0)
         t_intermediate, t_code_prob, t_x_dash = self._model._predict(t_x)
 
         loss_reconst = self._loss_reconst.forward(t_x_dash, t_x)
@@ -247,6 +247,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
                  use_intermediate_representation: bool = False,
                  model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
                  loss_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
+                 shuffle_hyponymy_dataset_on_every_epoch: bool = True
                  ):
 
         super().__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate,
@@ -261,6 +262,8 @@ class SupervisedTrainer(UnsupervisedTrainer):
         self._scale_loss_non_hyponymy = loss_non_hyponymy.scale if loss_non_hyponymy is not None else 1.
         self._scale_loss_code_length = loss_code_length.scale if loss_code_length is not None else 1.
 
+        self._shuffle_hyponymy_dataset_on_every_epoch = shuffle_hyponymy_dataset_on_every_epoch
+
     def training_step(self, data_batch, batch_nb):
 
         current_step = self.trainer.global_step / (self.trainer.max_nb_epochs * self.trainer.total_batches)
@@ -268,7 +271,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
         self._update_loss_parameters(current_step, verbose=False)
 
         # forward computation
-        t_x = data_batch["embedding"]
+        t_x = data_batch["embedding"].squeeze(dim=0)
 
         # DEBUG
         # return {"loss":torch.tensor(0.0, requires_grad=True), "log":{}}
@@ -323,7 +326,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
     def validation_step(self, data_batch, batch_nb):
 
         # forward computation without back-propagation
-        t_x = data_batch["embedding"]
+        t_x = data_batch["embedding"].squeeze(dim=0)
         t_latent_code, t_code_prob, t_x_dash = self._model._predict(t_x)
 
         # (required) reconstruction loss
@@ -384,4 +387,5 @@ class SupervisedTrainer(UnsupervisedTrainer):
         return {"val_loss":loss, "log":metrics}
 
     def on_epoch_start(self):
-        self.train_dataloader().dataset.shuffle_hyponymy_dataset()
+        if self._shuffle_hyponymy_dataset_on_every_epoch:
+            self.train_dataloader().dataset.shuffle_hyponymy_dataset()
