@@ -385,7 +385,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
             "val_loss_mutual_info": loss_mi / self._scale_loss_mi,
             "val_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
             "val_loss_non_hyponymy": loss_non_hyponymy / self._scale_loss_non_hyponymy,
-            "val_loss_hyponymy_positive": loss_hyponymy_positive / self._scale_loss_hyponymy # self._scale_loss_non_hyponymy,
+            "val_loss_hyponymy_positive": loss_hyponymy_positive / self._scale_loss_hyponymy, # self._scale_loss_non_hyponymy,
             "val_loss_code_length": loss_code_length / self._scale_loss_code_length,
             "val_loss": loss
         }
