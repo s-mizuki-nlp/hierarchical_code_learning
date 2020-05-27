@@ -259,7 +259,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
         self._loss_code_length = loss_code_length
 
         self._scale_loss_hyponymy = loss_hyponymy.scale
-        self._scale_loss_non_hyponymy = loss_non_hyponymy.scale if loss_non_hyponymy is not None else 1.
+        self._scale_loss_non_hyponymy = loss_non_hyponymy.scale if loss_non_hyponymy is not None else loss_hyponymy.scale
         self._scale_loss_code_length = loss_code_length.scale if loss_code_length is not None else 1.
 
         self._shuffle_hyponymy_dataset_on_every_epoch = shuffle_hyponymy_dataset_on_every_epoch
@@ -346,17 +346,24 @@ class SupervisedTrainer(UnsupervisedTrainer):
         if self._loss_non_hyponymy is not None:
             lst_tup_non_hyponymy = data_batch["non_hyponymy_relation"]
             loss_non_hyponymy = self._loss_non_hyponymy(code_repr, lst_tup_non_hyponymy)
+            loss_hyponymy_positive = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
         else:
-            loss_non_hyponymy = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device)
             cache = self._loss_hyponymy.reduction
             self._loss_hyponymy.reduction = "none"
             lst_loss_hyponymy = self._loss_hyponymy(code_repr, lst_tup_hyponymy)
             self._loss_hyponymy.reduction = cache
             n_sample = len(lst_tup_hyponymy)
+            loss_non_hyponymy = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device); n_non_hyponymy = 0
+            loss_hyponymy_positive = torch.tensor(0.0, dtype=torch.float32, device=t_code_prob.device); n_hyponymy_positive = 0
             for l, (u, v, distance) in zip(lst_loss_hyponymy, lst_tup_hyponymy):
                 if distance <= 0:
-                    loss_non_hyponymy += (l / n_sample)
-                    loss_hyponymy -= (l / n_sample)
+                    loss_non_hyponymy += l
+                    n_non_hyponymy += 1
+                else:
+                    loss_hyponymy_positive += l
+                    n_hyponymy_positive += 1
+            loss_non_hyponymy = loss_non_hyponymy / n_non_hyponymy
+            loss_hyponymy_positive = loss_hyponymy_positive / n_hyponymy_positive
 
         # (optional) code length loss
         if self._loss_code_length is not None:
@@ -378,6 +385,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
             "val_loss_mutual_info": loss_mi / self._scale_loss_mi,
             "val_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
             "val_loss_non_hyponymy": loss_non_hyponymy / self._scale_loss_non_hyponymy,
+            "val_loss_hyponymy_positive": loss_hyponymy_positive / self._scale_loss_hyponymy # self._scale_loss_non_hyponymy,
             "val_loss_code_length": loss_code_length / self._scale_loss_code_length,
             "val_loss": loss
         }
