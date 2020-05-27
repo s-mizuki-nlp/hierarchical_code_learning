@@ -374,7 +374,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
         loss = loss_reconst + loss_hyponymy + loss_non_hyponymy + loss_code_length + loss_mi
 
         metrics = {
-            "val_loss_reconst": loss_reconst,
+            "val_loss_reconst": loss_reconst / self._scale_loss_reconst,
             "val_loss_mutual_info": loss_mi / self._scale_loss_mi,
             "val_loss_hyponymy": loss_hyponymy / self._scale_loss_hyponymy,
             "val_loss_non_hyponymy": loss_non_hyponymy / self._scale_loss_non_hyponymy,
