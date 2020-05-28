@@ -1,8 +1,9 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Union, Dict
 import torch
+from torch import Tensor
 from torch import nn
 from torch.nn import functional as F
 
@@ -29,6 +30,9 @@ class SimpleDecoder(nn.Module):
         self.digit_weights = [digit_weight_function(d+1) for d in range(self._n_digits)]
 
     def forward(self, input_c: torch.Tensor):
+        # backward compatibility
+        if not hasattr(self, "digit_weights"):
+            self.digit_weights = [1.0 for d in range(self._n_digits)]
 
         # input_c: (N_b, N_digits, N_ary)
         lst_x = []
