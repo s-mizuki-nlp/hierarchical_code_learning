@@ -128,6 +128,19 @@ class AutoEncoder(nn.Module):
 
         return t_code.cpu().numpy()
 
+    def _encode_soft(self, t_x: torch.Tensor):
+        t_code_prob = self._encoder.forward(t_x)
+        return t_code_prob
+
+    def encode_soft(self, mat_x: np.ndarray):
+
+        with ExitStack() as context_stack:
+            context_stack.enter_context(torch.no_grad())
+            t_x = self._numpy_to_tensor(mat_x)
+            t_prob = self._encode_soft(t_x)
+
+        return t_prob.cpu().numpy()
+
     def _decode(self, t_code_prob: torch.Tensor):
 
         # t_code_prob: (N_batch, N_digits, N_ary), t_c_[b,n,m] \in [0,1]
