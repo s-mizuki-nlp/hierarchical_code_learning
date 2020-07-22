@@ -384,6 +384,9 @@ class GradedLexicalEntailmentEvaluator(BaseEvaluator):
 
         # get ground-truth rating
         lst_gt = self._get_specific_field_values(target_field_name=rating_field_name)
+        # get ground-truth tuple: (hypernym, hyponym, rating)
+        g = map(self._get_specific_field_values, (hypernym_field_name, hyponym_field_name, rating_field_name))
+        lst_tup_gt = list(zip(*g))
 
         # calculate metrics
         dict_ret = {}
@@ -393,4 +396,4 @@ class GradedLexicalEntailmentEvaluator(BaseEvaluator):
             except:
                 dict_ret[metric_name] = None
 
-        return lst_gt, lst_pred, dict_ret
+        return lst_tup_gt, lst_pred, dict_ret
