@@ -164,7 +164,7 @@ class UnsupervisedTrainer(pl.LightningModule):
         return {'avg_val_loss': avg_loss, 'log': avg_metrics}
 
     def on_save_checkpoint(self, checkpoint):
-        checkpoint["model_dump"] = pickle.dumps(self._model)
+        checkpoint["model_dump"] = pickle.dumps(self._model.cpu())
 
     @classmethod
     def load_model_from_checkpoint(self, weights_path: str, on_gpu: bool, map_location=None):
@@ -177,6 +177,8 @@ class UnsupervisedTrainer(pl.LightningModule):
             checkpoint = torch.load(weights_path, map_location=lambda storage, loc: storage)
 
         model = pickle.loads(checkpoint["model_dump"])
+        if on_gpu:
+            model = model.cuda(device=map_location)
         state_dict = {key.replace("_model.", ""):param for key, param in checkpoint["state_dict"].items()}
         model.load_state_dict(state_dict)
 
