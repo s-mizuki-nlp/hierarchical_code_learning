@@ -67,6 +67,9 @@ class UnsupervisedTrainer(pl.LightningModule):
     def _numpy_to_tensor(self, np_array: np.array):
         return torch.from_numpy(np_array).to(self._device)
 
+    def _get_model_device(self):
+        return (next(self._model.parameters())).device
+
     def configure_optimizers(self):
         opt = Adam(self.parameters(), lr=self._learning_rate)
         return opt
@@ -164,7 +167,16 @@ class UnsupervisedTrainer(pl.LightningModule):
         return {'avg_val_loss': avg_loss, 'log': avg_metrics}
 
     def on_save_checkpoint(self, checkpoint):
-        checkpoint["model_dump"] = pickle.dumps(self._model.cpu())
+        device = self._get_model_device()
+        if device != torch.device("cpu"):
+            # convert device to cpu. it changes self._model instance itself.
+            _ = self._model.to(device=torch.device("cpu"))
+        # save model dump
+        checkpoint["model_dump"] = pickle.dumps(self._model)
+        # then revert back if necessary.
+        if device != torch.device("cpu"):
+            # revert to original device (probably cuda).
+            _ = self._model.to(device=device)
 
     @classmethod
     def load_model_from_checkpoint(self, weights_path: str, on_gpu, map_location=None):
