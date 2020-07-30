@@ -14,6 +14,7 @@ _distance_str_to_float = FieldTypeConverter(dict_field_type_converter={"distance
 _exclude_top_synsets = DictionaryFilter(excludes={"synset_hypernym":set(SYNSETS_DEPTH_UP_TO_SECOND_LEVEL)})
 
 DIR_LEXICAL_KNOWLEDGE = "/home/sakae/Windows/dataset/hypernym_detection/wordnet_nguyen_2017/"
+DIR_LEXICAL_KNOWLEDGE_VER2 = "/home/sakae/Windows/dataset/hypernym_detection/wordnet_nguyen_2017_ver2/"
 
 # lexical knowledge: graded hyponymy relations extracted from WordNet corpus.
 # lemmas in these files are case sensitive and phrase included.
@@ -59,6 +60,14 @@ cfg_hyponymy_relation_datasets = {
         "transform": _distance_str_to_float,
         "filter": _exclude_top_synsets,
         "description": "WordNet-hyponymy relation dataset: noun and verb, excluding top-2 noun synsets",
+    },
+    "WordNet-hyponymy-synonymy-noun-verb": {
+        "path": os.path.join(DIR_LEXICAL_KNOWLEDGE_VER2, "lexical_knowledge_wordnet_hyponymy_synonymy_noun_verb_valid_case_sensitive.txt"),
+        "header": True,
+        "delimiter": "\t",
+        "columns": {"hyponym":0, "hypernym":1, "distance":2, "pos":3, "synset_hyponym":4, "synset_hypernym":5},
+        "transform": _distance_str_to_float,
+        "description": "WordNet hyponymy and synonymy relation dataset: noun and verb",
     }
 }
 
