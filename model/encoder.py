@@ -225,3 +225,105 @@ class CodeLengthAwareEncoder(SimpleEncoder):
     def gate_open_ratio(self, value):
         if self.gate_open_ratio is not None:
             setattr(self.code_length_predictor, "gate_open_ratio", value)
+
+
+class AutoRegressiveLSTMEncoder(SimpleEncoder):
+
+    def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int,
+                 n_dim_hidden: Optional[int] = None,
+                 n_dim_emb_code: Optional[int] = None,
+                 discretizer: Optional[nn.Module] = None,
+                 time_distributed: bool = True,
+                 kwargs_stacked_lstm_layer: Optional[Dict[str, Any]] = None,
+                 dtype=torch.float32,
+                 **kwargs):
+
+        super(SimpleEncoder, self).__init__()
+
+        assert discretizer is not None, f"so far, `discretizer` is a required argument."
+
+        self._discretizer = discretizer
+        self._is_discretize_code_probability = discretizer is not None
+        self._n_dim_emb = n_dim_emb
+        self._n_dim_emb_code = int(n_digits*n_ary //2) if n_dim_emb_code is None else n_dim_emb_code
+        self._n_dim_hidden = int(n_digits*n_ary //2) if n_dim_hidden is None else n_dim_hidden
+        self._n_digits = n_digits
+        self._n_ary = n_ary
+        self._dtype = dtype
+        self._n_ary_internal = None
+        self._time_distributed = time_distributed
+
+        self._build(kwargs_stacked_lstm_layer)
+
+    def _build(self, kwargs_stacked_lstm_layer):
+        self._x_to_h = nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden)
+        self._lstm_cell = nn.LSTMCell(input_size=self._n_dim_hidden+self._n_dim_emb_code, hidden_size=self._n_dim_hidden, bias=True)
+        self._embedding_code = nn.Linear(in_features=self._n_ary, out_features=self._n_dim_emb_code, bias=False)
+
+        # h_t -> z_t
+        if self._time_distributed:
+            self._lst_h_to_z = nn.Linear(in_features=self._n_dim_hidden, out_features=self._n_ary, bias=True)
+        else:
+            lst_layers = [nn.Linear(in_features=self._n_dim_hidden, out_features=self._n_ary, bias=True) for _ in range(self._n_digits)]
+            self._lst_h_to_z = nn.ModuleList(lst_layers)
+
+    def init_bias_to_min(self):
+        warnings.warn(f"it doesn't affect anything.")
+
+    def init_bias_to_max(self):
+        warnings.warn(f"it doesn't affect anything.")
+
+    def _dtype_and_device(self, t: torch.Tensor):
+        return t.dtype, t.device
+
+    def _init_state(self, n_batch: int, dtype, device):
+        h_t = torch.zeros((n_batch, self._n_dim_hidden), dtype=dtype, device=device)
+        c_t = torch.zeros((n_batch, self._n_dim_hidden), dtype=dtype, device=device)
+        e_t = torch.zeros((n_batch, self._n_dim_emb_code), dtype=dtype, device=device)
+
+        return h_t, c_t, e_t
+
+    def forward(self, input_x: torch.Tensor):
+        dtype, device = self._dtype_and_device(input_x)
+        n_batch = input_x.shape[0]
+
+        # v_h: (n_batch, n_dim_hidden)
+        t_h = torch.tanh(self._x_to_h(input_x))
+
+        # initialize variables
+        lst_prob_c = []
+        lst_latent_code = []
+        h_d, c_d, e_d = self._init_state(n_batch, dtype, device)
+
+        for d in range(self._n_digits):
+            input = torch.cat([t_h, e_d], dim=-1)
+            h_d, c_d = self._lstm_cell(input, (h_d, c_d))
+
+            # compute Pr{c_d=d|c_{<d}}
+            if self._time_distributed:
+                t_z_d_dash = self._lst_h_to_z(h_d)
+            else:
+                t_z_d_dash = self._lst_h_to_z[d](h_d)
+            t_z_d = torch.log(F.softplus(t_z_d_dash) + 1E-6)
+            t_prob_c_d = F.softmax(t_z_d, dim=-1)
+
+            # sample code
+            if self._is_discretize_code_probability:
+                t_latent_code_d = self._discretizer(t_prob_c_d)
+            else:
+                t_latent_code_d = t_prob_c_d
+
+            # compute the embedding of predicted code
+            e_d = self._embedding_code(t_latent_code_d.detach())
+
+            # store computed results
+            lst_prob_c.append(t_prob_c_d)
+            lst_latent_code.append(t_latent_code_d)
+
+        # stack code probability and latent code.
+        # t_prob_c: (n_batch, n_digits, n_ary)
+        t_prob_c = torch.stack(lst_prob_c, dim=1)
+        # t_latent_code: (n_batch, n_digits, n_ary)
+        t_latent_code = torch.stack(lst_latent_code, dim=1)
+
+        return t_latent_code, t_prob_c
