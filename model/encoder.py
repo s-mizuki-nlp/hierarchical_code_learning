@@ -132,11 +132,17 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         n_dim_h, n_dim_z = self._n_dim_hidden, self._n_ary_internal
         if (self._internal_layer_class is None) or (nn.Linear in inspect.getmro(self._internal_layer_class)):
             lst_layers = [nn.Linear(in_features=n_dim_h, out_features=n_dim_z) for _ in range(self._n_digits)]
+            self._forward_code_probability = self._calc_code_probability_by_mlp
+
         elif MultiDenseLayer in inspect.getmro(self._internal_layer_class):
             lst_layers = []
             for _ in range(self._n_digits):
                 l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, bias=False, **kwargs_multi_dense_layer)
                 lst_layers.append(l)
+
+            # assign forward method
+            self._forward_code_probability = self._calc_code_probability_by_mlp
+
         elif StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
             l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_seq_len=self._n_digits,
                                  **kwargs_stacked_lstm_layer)
@@ -149,26 +155,43 @@ class CodeLengthAwareEncoder(SimpleEncoder):
                 elif init_code_length == "max":
                     l.init_bias_to_max()
             lst_layers = [l]
+
+            # assign forward method
+            self._forward_code_probability = self._calc_code_probability_by_stacked_lstm
         else:
             raise NotImplementedError(f"unsupported layer was specified: {self._internal_layer_class.__class__}")
         self.lst_h_to_z = nn.ModuleList(lst_layers)
 
+    def _calc_code_probability_by_stacked_lstm(self, input_x: torch.Tensor):
+        stacked_lstm_layer = self.lst_h_to_z[0]
+
+        # t_h: (n_batch, n_dim_internal)
+        t_h = torch.tanh(self.x_to_h(input_x))
+        # t_z: (n_batch, n_digits, n_ary_internal)
+        t_z = torch.log(F.softplus(stacked_lstm_layer(t_h)) + 1E-6)
+        # lst_z: [(n_batch, n_ary_internal)]*n_digits
+        lst_z = list(map(torch.squeeze, t_z.split(1, dim=1)))
+        # t_prob_c: (n_batch, n_digits, n_ary_internal)
+        lst_prob_c = [F.softmax(t_z, dim=-1) for t_z in lst_z]
+        t_prob_c = torch.stack(lst_prob_c, dim=1)
+
+        return t_prob_c
+
+    def _calc_code_probability_by_mlp(self, input_x: torch.Tensor):
+        lst_mlp_layer = self.lst_h_to_z
+        # t_h: (n_batch, n_dim_internal)
+        t_h = torch.tanh(self.x_to_h(input_x))
+        lst_z = [torch.log(F.softplus(mlp_layer_n(t_h)) + 1E-6) for mlp_layer_n in lst_mlp_layer]
+        # t_prob_c: (n_batch, n_digits, n_ary_internal)
+        lst_prob_c = [F.softmax(t_z, dim=-1) for t_z in lst_z]
+        t_prob_c = torch.stack(lst_prob_c, dim=1)
+
+        return t_prob_c
+
     def forward(self, input_x: torch.Tensor):
 
         # code probability: p(c_n=m)
-        t_h = torch.tanh(self.x_to_h(input_x))
-        if StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
-            h_to_z = self.lst_h_to_z[0]
-            # t_z: (n_batch, n_digits, n_ary_internal)
-            t_z = torch.log(F.softplus(h_to_z(t_h)) + 1E-6)
-            # lst_z: [(n_batch, n_ary_internal)]*n_digits
-            lst_z = list(map(torch.squeeze, t_z.split(1, dim=1)))
-        else:
-            lst_z = [torch.log(F.softplus(h_to_z(t_h)) + 1E-6) for h_to_z in self.lst_h_to_z]
-        lst_prob_c = [F.softmax(t_z, dim=-1) for t_z in lst_z]
-
-        # t_prob_c: (n_batch, n_digits, n_ary_internal)
-        t_prob_c = torch.stack(lst_prob_c, dim=1)
+        t_prob_c = self._forward_code_probability(input_x)
 
         if self._n_ary_internal == self._n_ary - 1:
             # predict zero probability: p(c_n=0) separately using code length predictor
