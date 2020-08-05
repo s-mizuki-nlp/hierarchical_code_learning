@@ -85,6 +85,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         self._dtype = dtype
         self._code_length_predictor_class = code_length_predictor_class
         self._internal_layer_class = internal_layer_class
+        self._internal_layer_class_type = None
         self._n_ary_internal = None
 
         self._build(kwargs_code_length_predictor, kwargs_stacked_lstm_layer, kwargs_multi_dense_layer)
@@ -132,7 +133,8 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         n_dim_h, n_dim_z = self._n_dim_hidden, self._n_ary_internal
         if (self._internal_layer_class is None) or (nn.Linear in inspect.getmro(self._internal_layer_class)):
             lst_layers = [nn.Linear(in_features=n_dim_h, out_features=n_dim_z) for _ in range(self._n_digits)]
-            self._forward_code_probability = self._calc_code_probability_by_mlp
+
+            self._internal_layer_class_type = "Linear"
 
         elif MultiDenseLayer in inspect.getmro(self._internal_layer_class):
             lst_layers = []
@@ -140,8 +142,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
                 l = MultiDenseLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, bias=False, **kwargs_multi_dense_layer)
                 lst_layers.append(l)
 
-            # assign forward method
-            self._forward_code_probability = self._calc_code_probability_by_mlp
+            self._internal_layer_class_type = "MultiDenseLayer"
 
         elif StackedLSTMLayer in inspect.getmro(self._internal_layer_class):
             l = StackedLSTMLayer(n_dim_in=n_dim_h, n_dim_out=n_dim_z, n_dim_hidden=n_dim_h, n_seq_len=self._n_digits,
@@ -156,10 +157,11 @@ class CodeLengthAwareEncoder(SimpleEncoder):
                     l.init_bias_to_max()
             lst_layers = [l]
 
-            # assign forward method
-            self._forward_code_probability = self._calc_code_probability_by_stacked_lstm
+            self._internal_layer_class_type = "StackedLSTMLayer"
+
         else:
             raise NotImplementedError(f"unsupported layer was specified: {self._internal_layer_class.__class__}")
+
         self.lst_h_to_z = nn.ModuleList(lst_layers)
 
     def _calc_code_probability_by_stacked_lstm(self, input_x: torch.Tensor):
@@ -191,7 +193,12 @@ class CodeLengthAwareEncoder(SimpleEncoder):
     def forward(self, input_x: torch.Tensor):
 
         # code probability: p(c_n=m)
-        t_prob_c = self._forward_code_probability(input_x)
+        if self._internal_layer_class_type in ("Linear","MultiDenseLayer"):
+            t_prob_c = self._calc_code_probability_by_mlp(input_x)
+        elif self._internal_layer_class_type == "StackedLSTMLayer":
+            t_prob_c = self._calc_code_probability_by_stacked_lstm(input_x)
+        else:
+            raise ValueError(f"unknown internal layer type: {self._internal_layer_class_type}")
 
         if self._n_ary_internal == self._n_ary - 1:
             # predict zero probability: p(c_n=0) separately using code length predictor
