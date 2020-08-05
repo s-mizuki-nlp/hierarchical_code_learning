@@ -19,8 +19,14 @@ class AutoEncoder(nn.Module):
 
         super(AutoEncoder, self).__init__()
         self._encoder = encoder
+        self._encoder_class_name = encoder.__class__.__name__
         self._decoder = decoder
-        self._discretizer = discretizer
+
+        built_in_discretizer = getattr(self._encoder, "use_built_in_discretizer", False)
+        if built_in_discretizer:
+            self._discretizer = self._encoder.built_in_discretizer
+        else:
+            self._discretizer = discretizer
         self._normalize_output_length = normalize_output_length
         self._dtype = dtype
 
@@ -86,14 +92,24 @@ class AutoEncoder(nn.Module):
             if not requires_grad:
                 context_stack.enter_context(torch.no_grad())
 
-            # encoder
-            t_code_prob = self._encoder.forward(t_x)
+            # encoder and discretizer
+            if self._encoder_class_name == "AutoRegressiveLSTMEncoder":
+                if self._encoder.use_built_in_discretizer:
+                    t_latent_code, t_code_prob = self._encoder.forward(t_x)
+                else:
+                    _, t_code_prob = self._encoder.forward(t_x)
+                    if enable_discretizer:
+                        t_latent_code = self._discretizer.forward(t_code_prob)
+                    else:
+                        t_latent_code = t_code_prob
+            else:
+                t_code_prob = self._encoder.forward(t_x)
+                if enable_discretizer:
+                    t_latent_code = self._discretizer.forward(t_code_prob)
+                else:
+                    t_latent_code = t_code_prob
 
             # decoder
-            if enable_discretizer:
-                t_latent_code = self._discretizer.forward(t_code_prob)
-            else:
-                t_latent_code = t_code_prob
             t_x_dash = self._decoder.forward(t_latent_code)
 
             # length-normalizer
@@ -115,7 +131,7 @@ class AutoEncoder(nn.Module):
 
     def _encode(self, t_x: torch.Tensor):
 
-        t_code_prob = self._encoder.forward(t_x)
+        t_code_prob = self._encoder.calc_code_probability(t_x)
         t_code = torch.argmax(t_code_prob, dim=2, keepdim=False)
         return t_code
 
@@ -129,7 +145,7 @@ class AutoEncoder(nn.Module):
         return t_code.cpu().numpy()
 
     def _encode_soft(self, t_x: torch.Tensor):
-        t_code_prob = self._encoder.forward(t_x)
+        t_code_prob = self._encoder.calc_code_probability(t_x)
         return t_code_prob
 
     def encode_soft(self, mat_x: np.ndarray):
@@ -180,12 +196,14 @@ class MaskedAutoEncoder(AutoEncoder):
 
         assert masked_value == 0, "currently `mased_value` must be `0`, otherwise it will raise error."
         self._masked_value = masked_value
-        self._mask = self._build_mask_tensor(masked_value=masked_value)
 
-    def _build_mask_tensor(self, masked_value: int):
+    def _dtype_and_device(self, t: torch.Tensor):
+        return t.dtype, t.device
+
+    def _build_mask_tensor(self, masked_value: int, dtype, device):
 
         mask_shape = (1, self.n_digits, self.n_ary)
-        mask_tensor = torch.ones(mask_shape, dtype=self._dtype, requires_grad=False)
+        mask_tensor = torch.ones(mask_shape, dtype=dtype, device=device, requires_grad=False)
         mask_tensor[:,:,masked_value] = 0.0
 
         return mask_tensor
@@ -197,15 +215,27 @@ class MaskedAutoEncoder(AutoEncoder):
             if not requires_grad:
                 context_stack.enter_context(torch.no_grad())
 
-            # encoder
-            t_code_prob = self._encoder.forward(t_x)
-
-            # mask intermediate representation, then decode it
-            if enable_discretizer:
-                t_latent_code = self._discretizer(t_code_prob)
+            # encoder and discretizer
+            if self._encoder_class_name == "AutoRegressiveLSTMEncoder":
+                if self._encoder.use_built_in_discretizer:
+                    t_latent_code, t_code_prob = self._encoder.forward(t_x)
+                else:
+                    _, t_code_prob = self._encoder.forward(t_x)
+                    if enable_discretizer:
+                        t_latent_code = self._discretizer.forward(t_code_prob)
+                    else:
+                        t_latent_code = t_code_prob
             else:
-                t_latent_code = t_code_prob
-            t_decoder_input = t_latent_code * self._mask.to(device=t_x.device)
+                t_code_prob = self._encoder.forward(t_x)
+                if enable_discretizer:
+                    t_latent_code = self._discretizer.forward(t_code_prob)
+                else:
+                    t_latent_code = t_code_prob
+
+            # mask intermediate representation
+            dtype, device = self._dtype_and_device(t_x)
+            mask = self._build_mask_tensor(self._masked_value, dtype, device)
+            t_decoder_input = t_latent_code * mask
 
             # decoder
             t_x_dash = self._decoder.forward(t_decoder_input)
