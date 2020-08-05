@@ -48,6 +48,13 @@ class SimpleEncoder(nn.Module):
 
         return t_prob_c
 
+    def calc_code_probability(self, input_x: torch.Tensor):
+        return self.forward(input_x)
+
+    @property
+    def use_built_in_discretizer(self):
+        return False
+
 
 class CodeLengthAwareEncoder(SimpleEncoder):
 
@@ -233,6 +240,9 @@ class CodeLengthAwareEncoder(SimpleEncoder):
         if self.gate_open_ratio is not None:
             setattr(self.code_length_predictor, "gate_open_ratio", value)
 
+    @property
+    def use_built_in_discretizer(self):
+        return False
 
 class AutoRegressiveLSTMEncoder(SimpleEncoder):
 
@@ -240,14 +250,12 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
                  n_dim_hidden: Optional[int] = None,
                  n_dim_emb_code: Optional[int] = None,
                  discretizer: Optional[nn.Module] = None,
+                 detach_previous_output: bool = False,
                  time_distributed: bool = True,
-                 kwargs_stacked_lstm_layer: Optional[Dict[str, Any]] = None,
                  dtype=torch.float32,
                  **kwargs):
 
         super(SimpleEncoder, self).__init__()
-
-        assert discretizer is not None, f"so far, `discretizer` is a required argument."
 
         self._discretizer = discretizer
         self._is_discretize_code_probability = discretizer is not None
@@ -259,10 +267,11 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
         self._dtype = dtype
         self._n_ary_internal = None
         self._time_distributed = time_distributed
+        self._detach_previous_output = detach_previous_output
 
-        self._build(kwargs_stacked_lstm_layer)
+        self._build()
 
-    def _build(self, kwargs_stacked_lstm_layer):
+    def _build(self):
         self._x_to_h = nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden)
         self._lstm_cell = nn.LSTMCell(input_size=self._n_dim_hidden+self._n_dim_emb_code, hidden_size=self._n_dim_hidden, bias=True)
         self._embedding_code = nn.Linear(in_features=self._n_ary, out_features=self._n_dim_emb_code, bias=False)
@@ -320,8 +329,11 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
             else:
                 t_latent_code_d = t_prob_c_d
 
-            # compute the embedding of predicted code
-            e_d = self._embedding_code(t_latent_code_d.detach())
+            # compute the embedding of previous code
+            if self._detach_previous_output:
+                e_d = self._embedding_code(t_latent_code_d.detach())
+            else:
+                e_d = self._embedding_code(t_latent_code_d)
 
             # store computed results
             lst_prob_c.append(t_prob_c_d)
@@ -334,3 +346,23 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
         t_latent_code = torch.stack(lst_latent_code, dim=1)
 
         return t_latent_code, t_prob_c
+
+    def calc_code_probability(self, input_x: torch.Tensor):
+        _, t_prob_c = self.forward(input_x)
+        return t_prob_c
+
+    @property
+    def use_built_in_discretizer(self):
+        return self._is_discretize_code_probability
+
+    @property
+    def built_in_discretizer(self):
+        return self._discretizer
+
+    @property
+    def gate_open_ratio(self):
+        return None
+
+    @gate_open_ratio.setter
+    def gate_open_ratio(self, value):
+        pass
