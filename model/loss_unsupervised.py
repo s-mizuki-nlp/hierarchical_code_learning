@@ -8,7 +8,6 @@ import numpy as np
 ### self-supervised loss classes ###
 from model.loss_supervised import HyponymyScoreLoss
 
-
 class ReconstructionLoss(L._Loss):
 
     def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean'):
@@ -34,7 +33,7 @@ class ReconstructionLoss(L._Loss):
         self._scale = value
 
 ### unsupervised loss classes ###
-class MutualInformationLoss(L._Loss):
+class CodeLengthMutualInformationLoss(L._Loss):
 
     _EPS = 1E-5
 
@@ -49,9 +48,12 @@ class MutualInformationLoss(L._Loss):
         :param reduce:
         :param reduction:
         """
-        super(MutualInformationLoss, self).__init__(size_average, reduce, reduction)
+        super(CodeLengthMutualInformationLoss, self).__init__(size_average, reduce, reduction)
 
         self._scale = scale
+
+        # hyponymy score loss: it will be used to calculate cumulative zero probability.
+        self._auxiliary = HyponymyScoreLoss()
 
     def entropy(self, probs: torch.Tensor) -> torch.Tensor:
         """
@@ -65,18 +67,23 @@ class MutualInformationLoss(L._Loss):
         ent = _p_log_p(probs) + _p_log_p(1.0 - probs)
         return ent
 
+    def calc_code_length_probability(self, t_prob_c_zero: torch.Tensor):
+        return self._auxiliary._intensity_to_probability(t_prob_c_zero)
+
     def forward(self, t_prob_c: torch.Tensor):
 
-        # t_prob_c_zero: (N_b, N_digits); t_prob_c_zero[b,n] = {p(c_n=0|x_b)}
-        # t_prob_c_zero_mean: (N_digits,)
+        # t_prob_c_zero: (N_b, N_digits); t_prob_c_zero[b,n] = Pr{C_n=0|x_b}
+        # t_prob_code_length: (N_b, N_digits+1); t_prob_code_length[b,n] = Pr{len(C)=n|x_b}; n in {0,1,2,...,N_digits}
+        # t_prob_code_length_mean: (N_digits,)
         t_prob_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0, device=t_prob_c.device)).squeeze()
-        t_prob_c_zero_mean = torch.mean(t_prob_c_zero, dim=0, keepdim=False)
+        t_prob_code_length = self.calc_code_length_probability(t_prob_c_zero)
+        t_prob_code_length_mean = torch.mean(t_prob_code_length, dim=0, keepdim=False)
 
         # total_entropy: (N_digits,)
-        total_entropy = self.entropy(t_prob_c_zero_mean)
+        total_entropy = self.entropy(t_prob_code_length_mean)
 
         # conditional_entropy: (N_digits,)
-        conditional_entropy = torch.mean(self.entropy(t_prob_c_zero), dim=0)
+        conditional_entropy = torch.mean(self.entropy(t_prob_code_length), dim=0)
 
         if self.reduction in ("elementwise_mean", "mean"):
             mutual_info = torch.mean(total_entropy - conditional_entropy)
@@ -94,7 +101,7 @@ class MutualInformationLoss(L._Loss):
         self._scale = value
 
 
-class OriginalMutualInformationLoss(MutualInformationLoss):
+class CodeValueMutualInformationLoss(CodeLengthMutualInformationLoss):
 
     def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean'):
         """
@@ -112,13 +119,8 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
         super().__init__(scale, size_average, reduce, reduction)
         self._gate_open_ratio = 1.0
 
-    @property
-    def gate_open_ratio(self) -> float:
-        return self._gate_open_ratio
-
-    @gate_open_ratio.setter
-    def gate_open_ratio(self, value: float):
-        self._gate_open_ratio = value
+    def _dtype_and_device(self, t: torch.Tensor):
+        return t.dtype, t.device
 
     def _calc_digit_weights(self, n_digits: int, reduction: str, dtype, device) -> torch.Tensor:
         if self._gate_open_ratio == 1.0:
@@ -137,6 +139,23 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
         t_w = t_w.reshape(1,-1)
         return t_w
 
+    def calc_adjusted_code_value_probability(self, t_prob_c: torch.Tensor):
+        dtype, device = self._dtype_and_device(t_prob_c)
+        t_prob_c_adj = t_prob_c.clone()
+
+        # t_prob_c_zero: (n_batch, n_digits), t_prob_c_zero[b][d] = Pr{C_d=0|x_b}
+        t_prob_c_zero = torch.index_select(t_prob_c, dim=-1, index=torch.tensor(0, device=device)).squeeze()
+        # t_prob_beta: (n_batch, n_digits), t_prob_beta[b][d] = \prod_{d'=0}^{d}{1-\t_prob_c[b][d'][0]}
+        t_prob_beta = torch.cumprod(1.0 - t_prob_c_zero, dim=-1)
+
+        # adjust code probability using t_beta_prob
+        # t_prob_c_adj[b][d][0] = 1.0 - \beta[b][d]
+        # t_prob_c_adj[b][d][m] = t_prob_c[b][d][m] * \beta[b][d-1]; exclude both first digit(d=0) and zero-value(m=0)
+        t_prob_c_adj[:,:,0] = 1.0 - t_prob_beta
+        t_prob_c_adj[:,1:,1:] = t_prob_c[:,1:,1:] * t_prob_beta[:,:-1].unsqueeze(dim=-1)
+
+        return t_prob_c_adj
+
     def entropy(self, probs: torch.Tensor) -> torch.Tensor:
         """
         :param probs: array of multi-class probability with variable shape
@@ -151,7 +170,10 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
 
     def forward(self, t_prob_c: torch.Tensor):
 
-        # t_prob_c: (N_b, N_digits, N_ary); t_prob_c[b,n,c] = {p(c_n=c|x_b)}
+        # t_prob_c: (N_b, N_digits, N_ary); t_prob_c[b,n,c] = {p(c_n=c|x_b)} -> {p(C_d=c|C_{0:d-1} != 0)}
+        # adjust probability to incorporate the probability of zero of upper digits
+        t_prob_c = self.calc_adjusted_code_value_probability(t_prob_c)
+
         # t_prob_c_zero_mean: (N_digits, N_ary)
         t_prob_c_mean = torch.mean(t_prob_c, dim=0, keepdim=False)
 
@@ -168,3 +190,11 @@ class OriginalMutualInformationLoss(MutualInformationLoss):
         mutual_info = torch.sum(weight*(total_entropy - conditional_entropy))
 
         return - self._scale * mutual_info
+
+    @property
+    def gate_open_ratio(self) -> float:
+        return self._gate_open_ratio
+
+    @gate_open_ratio.setter
+    def gate_open_ratio(self, value: float):
+        self._gate_open_ratio = value
