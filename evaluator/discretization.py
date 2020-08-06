@@ -74,7 +74,7 @@ class CodeCountEvaluator(object):
         for batch in self._embeddings_data_loader:
             t_x = pydash.objects.get(batch, embedding_key_name)
             # mat_code: (n_batch, n_digits)
-            mat_code = self._model._encode(t_x).numpy()
+            mat_code = self._model._encode(t_x, adjust_code_probability=True).numpy()
 
             # count value occurence at each digit of the code.
             for digit, (vec_value, vec_count) in enumerate(map(lambda v: np.unique(v, return_counts=True), mat_code.T)):

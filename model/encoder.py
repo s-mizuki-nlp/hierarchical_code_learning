@@ -49,7 +49,7 @@ class SimpleEncoder(nn.Module):
 
         return t_prob_c
 
-    def calc_code_probability(self, input_x: torch.Tensor):
+    def calc_code_probability(self, input_x: torch.Tensor, **kwargs):
         return self.forward(input_x)
 
     @property
@@ -355,7 +355,7 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
 
         return t_latent_code, t_prob_c
 
-    def calc_code_probability(self, input_x: torch.Tensor, adjust_code_probability: bool = False):
+    def calc_code_probability(self, input_x: torch.Tensor, adjust_code_probability: bool = False, **kwargs):
         _, t_prob_c = self.forward(input_x, on_inference=True)
         if adjust_code_probability:
             t_prob_c = CodeValueMutualInformationLoss.calc_adjusted_code_probability(t_prob_c)
