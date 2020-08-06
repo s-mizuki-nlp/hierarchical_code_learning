@@ -70,8 +70,8 @@ class BaseEvaluator(object, metaclass=ABCMeta):
             mat_emb_hyponyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hyponyms])
             mat_emb_hypernyms = np.stack([self._embeddings_dataset[entity][embedding_field_name] for entity in lst_hypernyms])
             # encode embeddings into the code probabilities
-            _, t_mat_code_prob_hyponyms, _ = self._model.predict(mat_emb_hyponyms)
-            _, t_mat_code_prob_hypernyms, _ = self._model.predict(mat_emb_hypernyms)
+            t_mat_code_prob_hyponyms = self._model.encode_soft(mat_emb_hyponyms)
+            t_mat_code_prob_hypernyms = self._model.encode_soft(mat_emb_hypernyms)
 
             # apply predictor functions
             # x: hypernym, y: hyponym
