@@ -129,31 +129,31 @@ class AutoEncoder(nn.Module):
 
         return tuple(map(self._tensor_to_numpy, (t_latent_code, t_code_prob, t_x_dash)))
 
-    def _encode(self, t_x: torch.Tensor):
+    def _encode(self, t_x: torch.Tensor, **kwargs):
 
-        t_code_prob = self._encoder.calc_code_probability(t_x)
+        t_code_prob = self._encoder.calc_code_probability(t_x, **kwargs)
         t_code = torch.argmax(t_code_prob, dim=2, keepdim=False)
         return t_code
 
-    def encode(self, mat_x: np.ndarray):
+    def encode(self, mat_x: np.ndarray, **kwargs):
 
         with ExitStack() as context_stack:
             context_stack.enter_context(torch.no_grad())
             t_x = self._numpy_to_tensor(mat_x)
-            t_code = self._encode(t_x)
+            t_code = self._encode(t_x, **kwargs)
 
         return t_code.cpu().numpy()
 
-    def _encode_soft(self, t_x: torch.Tensor):
-        t_code_prob = self._encoder.calc_code_probability(t_x)
+    def _encode_soft(self, t_x: torch.Tensor, **kwargs):
+        t_code_prob = self._encoder.calc_code_probability(t_x, **kwargs)
         return t_code_prob
 
-    def encode_soft(self, mat_x: np.ndarray):
+    def encode_soft(self, mat_x: np.ndarray, **kwargs):
 
         with ExitStack() as context_stack:
             context_stack.enter_context(torch.no_grad())
             t_x = self._numpy_to_tensor(mat_x)
-            t_prob = self._encode_soft(t_x)
+            t_prob = self._encode_soft(t_x, **kwargs)
 
         return t_prob.cpu().numpy()
 
