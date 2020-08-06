@@ -15,6 +15,7 @@ from torch.nn import functional as F
 from .regressor import SoftmaxBasedCDFEstimator, ScheduledSoftmaxBasedCDFEstimator
 from .functional import CodeProbabiltyAdjuster
 from .encoder_internal import MultiDenseLayer, StackedLSTMLayer
+from .loss_unsupervised import CodeValueMutualInformationLoss
 
 
 class SimpleEncoder(nn.Module):
@@ -299,7 +300,7 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
 
         return h_t, c_t, e_t
 
-    def forward(self, input_x: torch.Tensor):
+    def forward(self, input_x: torch.Tensor, on_inference: bool = False):
         dtype, device = self._dtype_and_device(input_x)
         n_batch = input_x.shape[0]
 
@@ -323,11 +324,18 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
             t_z_d = torch.log(F.softplus(t_z_d_dash) + 1E-6)
             t_prob_c_d = F.softmax(t_z_d, dim=-1)
 
-            # sample code
-            if self._is_discretize_code_probability:
-                t_latent_code_d = self._discretizer(t_prob_c_d)
-            else:
+            # branch on training or on inference
+
+            if on_inference:
                 t_latent_code_d = t_prob_c_d
+                # or should we take argmax?
+                # t_latent_code_d = F.one_hot(t_prob_c_d.argmax(dim=-1), num_classes=self._n_ary).type(dtype)
+            else:
+                ## sample code
+                if self._is_discretize_code_probability:
+                    t_latent_code_d = self._discretizer(t_prob_c_d)
+                else:
+                    t_latent_code_d = t_prob_c_d
 
             # compute the embedding of previous code
             if self._detach_previous_output:
@@ -347,8 +355,11 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
 
         return t_latent_code, t_prob_c
 
-    def calc_code_probability(self, input_x: torch.Tensor):
-        _, t_prob_c = self.forward(input_x)
+    def calc_code_probability(self, input_x: torch.Tensor, adjust_code_probability: bool = True):
+        _, t_prob_c = self.forward(input_x, on_inference=True)
+        if adjust_code_probability:
+            t_prob_c = CodeValueMutualInformationLoss.calc_adjusted_code_probability(t_prob_c)
+
         return t_prob_c
 
     @property
