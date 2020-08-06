@@ -119,7 +119,8 @@ class CodeValueMutualInformationLoss(CodeLengthMutualInformationLoss):
         super().__init__(scale, size_average, reduce, reduction)
         self._gate_open_ratio = 1.0
 
-    def _dtype_and_device(self, t: torch.Tensor):
+    @classmethod
+    def _dtype_and_device(cls, t: torch.Tensor):
         return t.dtype, t.device
 
     def _calc_digit_weights(self, n_digits: int, reduction: str, dtype, device) -> torch.Tensor:
@@ -139,8 +140,9 @@ class CodeValueMutualInformationLoss(CodeLengthMutualInformationLoss):
         t_w = t_w.reshape(1,-1)
         return t_w
 
-    def calc_adjusted_code_value_probability(self, t_prob_c: torch.Tensor):
-        dtype, device = self._dtype_and_device(t_prob_c)
+    @classmethod
+    def calc_adjusted_code_probability(cls, t_prob_c: torch.Tensor):
+        dtype, device = cls._dtype_and_device(t_prob_c)
         t_prob_c_adj = t_prob_c.clone()
 
         # t_prob_c_zero: (n_batch, n_digits), t_prob_c_zero[b][d] = Pr{C_d=0|x_b}
@@ -172,7 +174,7 @@ class CodeValueMutualInformationLoss(CodeLengthMutualInformationLoss):
 
         # t_prob_c: (N_b, N_digits, N_ary); t_prob_c[b,n,c] = {p(c_n=c|x_b)} -> {p(C_d=c|C_{0:d-1} != 0)}
         # adjust probability to incorporate the probability of zero of upper digits
-        t_prob_c = self.calc_adjusted_code_value_probability(t_prob_c)
+        t_prob_c = self.calc_adjusted_code_probability(t_prob_c)
 
         # t_prob_c_zero_mean: (N_digits, N_ary)
         t_prob_c_mean = torch.mean(t_prob_c, dim=0, keepdim=False)
