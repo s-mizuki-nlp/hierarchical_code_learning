@@ -108,8 +108,11 @@ class UnsupervisedTrainer(pl.LightningModule):
         self._update_model_parameters(current_step, verbose=False)
         self._update_loss_parameters(current_step, verbose=False)
 
+        if isinstance(data_batch, list):
+            data_batch = data_batch[0]
+
         # forward computation
-        t_x = torch.tensor(data_batch[0]["embedding"], dtype=torch.float32).squeeze(dim=0)
+        t_x = torch.tensor(data_batch["embedding"], dtype=torch.float32, device=self._get_model_device()).squeeze(dim=0)
         t_latent_code, t_code_prob, t_x_dash = self._model.forward(t_x)
 
         # (required) reconstruction loss
@@ -146,7 +149,7 @@ class UnsupervisedTrainer(pl.LightningModule):
     def validation_step(self, data_batch, batch_nb):
 
         # forward computation without back-propagation
-        t_x = torch.tensor(data_batch[0]["embedding"], dtype=torch.float32).squeeze(dim=0)
+        t_x = torch.tensor(data_batch[0]["embedding"], dtype=torch.float32, device=self._get_model_device()).squeeze(dim=0)
         t_intermediate, t_code_prob, t_x_dash = self._model._predict(t_x)
 
         loss_reconst = self._loss_reconst.forward(t_x_dash, t_x)
@@ -301,7 +304,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
             data_batch = data_batch[0]
 
         # forward computation
-        t_x = torch.tensor(data_batch["embedding"], dtype=torch.float32).squeeze(dim=0)
+        t_x = torch.tensor(data_batch["embedding"], dtype=torch.float32, device=self._get_model_device()).squeeze(dim=0)
 
         # DEBUG
         # return {"loss":torch.tensor(0.0, requires_grad=True), "log":{}}
@@ -359,7 +362,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
             data_batch = data_batch[0]
 
         # forward computation without back-propagation
-        t_x = torch.tensor(data_batch["embedding"], dtype=torch.float32).squeeze(dim=0)
+        t_x = torch.tensor(data_batch["embedding"], dtype=torch.float32, device=self._get_model_device()).squeeze(dim=0)
         t_latent_code, t_code_prob, t_x_dash = self._model._predict(t_x)
 
         # (required) reconstruction loss
