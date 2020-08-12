@@ -6,11 +6,13 @@ from __future__ import division
 from __future__ import print_function
 
 from typing import Optional, Dict, Callable
+import warnings
 from collections import defaultdict
 import pickle
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from torch.utils.data._utils.collate import default_collate
 from torch.nn.modules.loss import _Loss
 from torch.optim import Adam
 import pytorch_lightning as pl
@@ -74,16 +76,27 @@ class UnsupervisedTrainer(pl.LightningModule):
         opt = Adam(self.parameters(), lr=self._learning_rate)
         return opt
 
+    def _asssign_null_collate_function(self, dataloader: Optional[DataLoader]):
+        if dataloader is None:
+            return dataloader
+        if (dataloader.collate_fn is None) or (dataloader.collate_fn is default_collate):
+            warnings.warn("update collate_fn with null function.")
+            dataloader.collate_fn = lambda v:v
+        return dataloader
+
     @pl.data_loader
     def tng_dataloader(self):
+        self._dataloaders["train"] = self._asssign_null_collate_function(self._dataloaders["train"])
         return self._dataloaders["train"]
 
     @pl.data_loader
     def val_dataloader(self):
+        self._dataloaders["val"] = self._asssign_null_collate_function(self._dataloaders["val"])
         return self._dataloaders["val"]
 
     @pl.data_loader
     def test_dataloader(self):
+        self._dataloaders["test"] = self._asssign_null_collate_function(self._dataloaders["test"])
         return self._dataloaders["test"]
 
     def forward(self, x):
@@ -96,7 +109,7 @@ class UnsupervisedTrainer(pl.LightningModule):
         self._update_loss_parameters(current_step, verbose=False)
 
         # forward computation
-        t_x = data_batch["embedding"].squeeze(dim=0)
+        t_x = torch.tensor(data_batch[0]["embedding"], dtype=torch.float32).squeeze(dim=0)
         t_latent_code, t_code_prob, t_x_dash = self._model.forward(t_x)
 
         # (required) reconstruction loss
@@ -133,7 +146,7 @@ class UnsupervisedTrainer(pl.LightningModule):
     def validation_step(self, data_batch, batch_nb):
 
         # forward computation without back-propagation
-        t_x = data_batch["embedding"].squeeze(dim=0)
+        t_x = torch.tensor(data_batch[0]["embedding"], dtype=torch.float32).squeeze(dim=0)
         t_intermediate, t_code_prob, t_x_dash = self._model._predict(t_x)
 
         loss_reconst = self._loss_reconst.forward(t_x_dash, t_x)
@@ -284,8 +297,11 @@ class SupervisedTrainer(UnsupervisedTrainer):
         self._update_model_parameters(current_step, verbose=False)
         self._update_loss_parameters(current_step, verbose=False)
 
+        if isinstance(data_batch, list):
+            data_batch = data_batch[0]
+
         # forward computation
-        t_x = data_batch["embedding"].squeeze(dim=0)
+        t_x = torch.tensor(data_batch["embedding"], dtype=torch.float32).squeeze(dim=0)
 
         # DEBUG
         # return {"loss":torch.tensor(0.0, requires_grad=True), "log":{}}
@@ -339,8 +355,11 @@ class SupervisedTrainer(UnsupervisedTrainer):
 
     def validation_step(self, data_batch, batch_nb):
 
+        if isinstance(data_batch, list):
+            data_batch = data_batch[0]
+
         # forward computation without back-propagation
-        t_x = data_batch["embedding"].squeeze(dim=0)
+        t_x = torch.tensor(data_batch["embedding"], dtype=torch.float32).squeeze(dim=0)
         t_latent_code, t_code_prob, t_x_dash = self._model._predict(t_x)
 
         # (required) reconstruction loss
