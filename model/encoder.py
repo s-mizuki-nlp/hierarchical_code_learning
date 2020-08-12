@@ -328,7 +328,8 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
 
             if on_inference:
                 t_latent_code_d = t_prob_c_d
-                # or should we take argmax?
+                # empirically, embedding based on the probability produces better result then argmax.
+                # I guess it minimizes difference on training and inference.
                 # t_latent_code_d = F.one_hot(t_prob_c_d.argmax(dim=-1), num_classes=self._n_ary).type(dtype)
             else:
                 ## sample code
