@@ -28,6 +28,9 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                          entity_depth_information = None,
                          verbose=False, **kwargs_hyponymy_dataloader)
 
+        # Make sure that negative example is not hyponyms, nor hypernyms.
+        assert exclude_reverse_hyponymy_from_non_hyponymy_relation, "`exclude_reverse_hyponymy_from_non_hyponymy_relation` must be set to True."
+
         # overwrite the taxonomy that was built by superclass
         if isinstance(hyponymy_dataset, WordNetHyponymyDataset):
             self._taxonomy = WordNetHyponymyPairSet(hyponymy_dataset=hyponymy_dataset)
