@@ -9,7 +9,6 @@ from typing import Optional, Iterable, Tuple, Set, Type, List, Dict, Callable, U
 from collections import defaultdict
 import numpy as np
 import math
-from functools import lru_cache
 
 from .lexical_knowledge import HyponymyDataset
 
@@ -77,12 +76,12 @@ class BasicHyponymyPairSet(object):
             non_candidates = self.hyponyms_and_self(entity)
         candidates = self.nodes if candidates is None else tuple(set(candidates).intersection(set(self.nodes)))
 
-        if len(candidates) - len(non_candidates) <= 0:
+        non_candidate_ratio = len(non_candidates)/len(candidates)
+        if 0.999 <= non_candidate_ratio:
+            # give up sampling
             return []
-        elif len(non_candidates)/len(candidates) >= 0.9:
+        elif 0.9 <= non_candidate_ratio < 0.999:
             candidates = tuple(set(candidates) - non_candidates)
-        elif len(candidates) < size:
-            candidates = (candidates)*(math.ceil(size/len(candidates)))
 
         # sampling with replacement
         sampled = tuple()
