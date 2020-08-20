@@ -113,7 +113,13 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         for hyponymy in batch_hyponymy:
             hyper = hyponymy["hypernym"]
             hypo = hyponymy["hyponym"]
+            dist = hyponymy["distance"]
             pos = hyponymy.get("pos", None)
+
+            # if the given pair is not hyponymy(<=>distance is less than or equal to 0.0), ignore it.
+            if dist <= 0.0:
+                continue
+
             lst_tup_sample_b = []
             if "hyponym" in self._non_hyponymy_relation_target:
                 lst_tup_sample_b_swap_hypo = self._taxonomy.sample_random_hyponyms(entity=hyper, candidates=set_candidates, size=size_per_sample,
