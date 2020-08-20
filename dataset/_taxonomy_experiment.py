@@ -20,7 +20,7 @@ class BasicHyponymyPairSet(object):
     def __init__(self, hyponymy_dataset: HyponymyDataset):
 
         # build taxonomy as a DAG
-        iter_hyponymy_pairs = ((record["hypernym"], record["hyponym"]) for record in hyponymy_dataset)
+        iter_hyponymy_pairs = ((record["hypernym"], record["hyponym"], record["distance"]) for record in hyponymy_dataset)
         self.record_ancestors_and_descendants(iter_hyponymy_pairs)
         self._random_number_generator = self._random_number_generator_iterator(max_value=self.n_nodes_max)
 
@@ -45,21 +45,30 @@ class BasicHyponymyPairSet(object):
         return self._trainset_hyponymies_and_self
 
     @property
-    def trainset(self):
-        return self._trainset
+    def hyponymies(self):
+        return self._hyponymies
 
     def record_ancestors_and_descendants(self, iter_hyponymy_pairs):
-        self._trainset  = set() # set of the tuple of (hypernym, hyponym) pair.
+        self._hyponymies  = set() # set of the tuple of (hypernym, hyponym) pair.
+        nodes = set()
         self._trainset_hyponymies_and_self = defaultdict(set)
-        for hypernym, hyponym in iter_hyponymy_pairs:
-            self._trainset_hyponymies_and_self[hyponym].add(hypernym)
-            self._trainset_hyponymies_and_self[hypernym].add(hyponym)
-            self._trainset.add((hypernym, hyponym))
+        for hypernym, hyponym, distance in iter_hyponymy_pairs:
+            nodes.add(hypernym)
+            nodes.add(hyponym)
+
+            if distance >= 0.0:
+                self._trainset_hyponymies_and_self[hyponym].add(hypernym)
+                self._trainset_hyponymies_and_self[hypernym].add(hyponym)
+
+            if distance >= 1.0:
+                self._hyponymies.add((hypernym, hyponym))
+
         # insert oneself
         for entity in self._trainset_hyponymies_and_self.keys():
             self._trainset_hyponymies_and_self[entity].add(entity)
 
-        self._nodes = tuple(set(self._trainset_hyponymies_and_self.keys()))
+        # set nodes
+        self._nodes = tuple(nodes)
 
     def _random_number_generator_iterator(self, max_value: int):
         seeds = np.arange(max_value)
@@ -79,9 +88,6 @@ class BasicHyponymyPairSet(object):
 
     def hypernyms_and_hyponyms_and_self(self, entity):
         return self.trainset_hyponymies_and_self.get(entity, set())
-
-    def hyponymies(self):
-        return self.trainset
 
     def sample_non_hyponymy(self, entity, candidates: Optional[Iterable[str]] = None,
                             size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
@@ -132,7 +138,7 @@ class BasicHyponymyPairSet(object):
         return lst_ret
 
     def is_in_dataset(self, entity, **kwargs):
-        return entity in self.trainset_hyponymies_and_self
+        return entity in self.nodes
 
     def is_hyponymy_relation(self, hypernym, hyponym, include_reverse_hyponymy: bool = True, not_exists = None, **kwargs):
         if not (self.is_in_dataset(hypernym) and self.is_in_dataset(hyponym)):
@@ -142,9 +148,9 @@ class BasicHyponymyPairSet(object):
         pair_reverse = (hyponym, hypernym)
 
         if include_reverse_hyponymy:
-            ret = (pair_forward in self.hyponymies()) or (pair_reverse in self.hyponymies())
+            ret = (pair_forward in self.hyponymies) or (pair_reverse in self.hyponymies)
         else:
-            ret = (pair_forward in self.hyponymies())
+            ret = (pair_forward in self.hyponymies)
 
         return ret
 
@@ -159,29 +165,35 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
             entity_type = record["pos"]
             entity_hyper = record["hypernym"]
             entity_hypo = record["hyponym"]
-            dict_iter_trainset_pairs[entity_type].append((entity_hyper, entity_hypo))
+            distance = record["distance"]
+            dict_iter_trainset_pairs[entity_type].append((entity_hyper, entity_hypo, distance))
 
         self.record_ancestors_and_descendants(dict_iter_trainset_pairs)
         self._random_number_generator = self._random_number_generator_iterator(max_value=self.n_nodes_max)
 
     def record_ancestors_and_descendants(self, dict_iter_hyponymy_pairs):
-        self._trainset = defaultdict(lambda :set())
+        self._hyponymies = defaultdict(lambda :set())
         self._trainset_hyponymies_and_self = defaultdict(lambda :defaultdict(set))
+        nodes = defaultdict(lambda : set())
 
-        for entity_type, iter_hyponymy_pairs in dict_iter_hyponymy_pairs.items():
-            for hypernym, hyponym in iter_hyponymy_pairs:
-                self._trainset[entity_type].add((hypernym, hyponym))
-                self._trainset_hyponymies_and_self[entity_type][hyponym].add(hypernym)
-                self._trainset_hyponymies_and_self[entity_type][hypernym].add(hyponym)
+        for entity_type, iter_hyponymy_tuples in dict_iter_hyponymy_pairs.items():
+            for hypernym, hyponym, distance in iter_hyponymy_tuples:
+                nodes[entity_type].add(hypernym)
+                nodes[entity_type].add(hyponym)
+
+                if distance >= 0.0:
+                    self._trainset_hyponymies_and_self[entity_type][hyponym].add(hypernym)
+                    self._trainset_hyponymies_and_self[entity_type][hypernym].add(hyponym)
+
+                if distance >= 1.0:
+                    self._hyponymies[entity_type].add((hypernym, hyponym))
+
             # add oneself
             for entity in self._trainset_hyponymies_and_self.keys():
                 self._trainset_hyponymies_and_self[entity_type][entity].add(entity)
 
         # create tuple of entities as nodes
-        nodes = {}
-        for entity_type in dict_iter_hyponymy_pairs.keys():
-            nodes[entity_type] = tuple(set(self._trainset_hyponymies_and_self[entity_type].keys()))
-        self._nodes = nodes
+        self._nodes = {entity_type:tuple(entities) for entity_type, entities in nodes.items()}
 
         # unset active entity type
         self._active_entity_type = None
@@ -197,7 +209,7 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
 
     @property
     def entity_types(self):
-        return set(self._trainset.keys())
+        return set(self._hyponymies.keys())
 
     @property
     def trainset_ancestors(self):
@@ -216,8 +228,8 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
         return self._trainset_hyponymies_and_self.get(self.ACTIVE_ENTITY_TYPE, self._trainset_hyponymies_and_self)
 
     @property
-    def trainset(self):
-        return self._trainset.get(self.ACTIVE_ENTITY_TYPE, self._trainset)
+    def hyponymies(self):
+        return self._hyponymies.get(self.ACTIVE_ENTITY_TYPE, self._hyponymies)
 
     @property
     def n_nodes_max(self):
