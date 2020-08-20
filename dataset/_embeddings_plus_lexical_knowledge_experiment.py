@@ -160,6 +160,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                 elif is_hyponymy_relation:
                     dist_rev = 1.0
                 else:
+                    # reverse of hyponymy cannot be synonymy. it must be either reverse-hyponymy or no-relation.
                     dist_rev = -1.0
 
             d = {
