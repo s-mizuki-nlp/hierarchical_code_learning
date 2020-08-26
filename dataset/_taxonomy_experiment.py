@@ -11,7 +11,8 @@ import numpy as np
 import math
 
 from .lexical_knowledge import HyponymyDataset
-
+from .word_embeddings import AbstractWordEmbeddingsDataset
+from .utils import EmbeddingSimilaritySearch
 
 class BasicHyponymyPairSet(object):
 
@@ -48,6 +49,10 @@ class BasicHyponymyPairSet(object):
     def hyponymies(self):
         return self._hyponymies
 
+    @property
+    def trainset_negative_nearest_neighbors(self):
+        return self._trainset_negative_nearest_neighbors
+
     def record_ancestors_and_descendants(self, iter_hyponymy_pairs):
         self._hyponymies  = set() # set of the tuple of (hypernym, hyponym) pair.
         nodes = set()
@@ -70,6 +75,24 @@ class BasicHyponymyPairSet(object):
         # set nodes
         self._nodes = tuple(nodes)
 
+    def prebuild_negative_nearest_neighbors(self, word_embeddings_dataset: AbstractWordEmbeddingsDataset, top_k: Optional[int] = None, top_q: Optional[float] = None):
+        print(f"lookup negative nearest neighbors. entity size:{len(self.nodes)}")
+        self._trainset_negative_nearest_neighbors = {}
+
+        # get word embeddings of the nodes
+        iter_embeddings = (word_embeddings_dataset[entity] for entity in self.nodes)
+        embeddings = {obj["entity"]:obj["embedding"] for obj in iter_embeddings}
+
+        # instanciate similarity search class
+        entity_similarity_model = EmbeddingSimilaritySearch(embeddings=embeddings)
+
+        # loop over whole nodes
+        for entity in self.nodes:
+            positive_entities = self.hypernyms_and_hyponyms_and_self(entity)
+            vec_e = word_embeddings_dataset[entity]["embedding"]
+            lst_similar_entities = entity_similarity_model.most_similar(vector=vec_e, top_k=top_k, top_q=top_q, excludes=positive_entities)
+            self._trainset_negative_nearest_neighbors[entity] = tuple(e for e, sim in lst_similar_entities)
+
     def _random_number_generator_iterator(self, max_value: int):
         seeds = np.arange(max_value)
         while True:
@@ -86,8 +109,11 @@ class BasicHyponymyPairSet(object):
     def hyponyms_and_self(self, entity):
         return self.hyponyms(entity) | {entity}
 
-    def hypernyms_and_hyponyms_and_self(self, entity):
+    def hypernyms_and_hyponyms_and_self(self, entity) -> Set[str]:
         return self.trainset_hyponymies_and_self.get(entity, set())
+
+    def negative_nearest_neighbors(self, entity) -> Iterable[str]:
+        return self.trainset_negative_nearest_neighbors.get(entity, tuple())
 
     def sample_non_hyponymy(self, entity, candidates: Optional[Iterable[str]] = None,
                             size: int = 1, exclude_hypernyms: bool = True) -> List[str]:
@@ -207,6 +233,27 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
         # unset active entity type
         self._active_entity_type = None
 
+    def prebuild_negative_nearest_neighbors(self, word_embeddings_dataset: AbstractWordEmbeddingsDataset, top_k: Optional[int] = None, top_q: Optional[float] = None):
+        print(f"lookup negative nearest neighbors...")
+        self._trainset_negative_nearest_neighbors = defaultdict(lambda :{})
+        for entity_type, in self.entity_types:
+            print(f"pos:{entity_type}, entity size:{len(self.nodes)}")
+            # switch entity type
+            self.ACTIVE_ENTITY_TYPE = entity_type
+            # get word embeddings of the nodes
+            iter_embeddings = (word_embeddings_dataset[entity] for entity in self.nodes)
+            embeddings = {obj["entity"]:obj["embedding"] for obj in iter_embeddings}
+            # instanciate similarity search class
+            entity_similarity_model = EmbeddingSimilaritySearch(embeddings=embeddings)
+            for entity in self.nodes:
+                positive_entities = self.hypernyms_and_hyponyms_and_self(entity)
+                vec_e = word_embeddings_dataset[entity]["embedding"]
+                lst_similar_entities = entity_similarity_model.most_similar(vector=vec_e, top_k=top_k, top_q=top_q, excludes=positive_entities)
+                self._trainset_negative_nearest_neighbors[entity_type][entity] = tuple(e for e, sim in lst_similar_entities)
+
+        # unset active entity type
+        self._active_entity_type = None
+
     @property
     def ACTIVE_ENTITY_TYPE(self):
         return self._active_entity_type
@@ -235,6 +282,10 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
     @property
     def trainset_hyponymies_and_self(self):
         return self._trainset_hyponymies_and_self.get(self.ACTIVE_ENTITY_TYPE, self._trainset_hyponymies_and_self)
+
+    @property
+    def trainset_negative_nearest_neighbors(self):
+        return self._trainset_negative_nearest_neighbors.get(self.ACTIVE_ENTITY_TYPE, self._trainset_negative_nearest_neighbors)
 
     @property
     def hyponymies(self):
