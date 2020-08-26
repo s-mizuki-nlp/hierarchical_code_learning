@@ -96,14 +96,23 @@ class BasicHyponymyPairSet(object):
             non_candidates = self.hypernyms_and_hyponyms_and_self(entity)
         else:
             non_candidates = self.hyponyms_and_self(entity)
-        candidates = self.nodes if candidates is None else tuple(set(candidates).intersection(set(self.nodes)))
 
-        non_candidate_ratio = len(non_candidates)/len(candidates)
-        if 0.999 <= non_candidate_ratio:
-            # give up sampling
-            return []
-        elif 0.9 <= non_candidate_ratio < 0.999:
-            candidates = tuple(set(candidates) - non_candidates)
+        if candidates is None:
+            # use whole entities as the candidates.
+            candidates = self.nodes
+            # remove non-candidates beforehand to make the negative sampling more efficient.
+            non_candidate_ratio = len(non_candidates)/len(candidates)
+            if 0.999 <= non_candidate_ratio:
+                # give up sampling
+                return []
+            elif 0.9 <= non_candidate_ratio < 0.999:
+                candidates = tuple(set(candidates) - non_candidates)
+        else:
+            # use user-specified candidates as it is.
+            if len(candidates) == 0:
+                return []
+            else:
+                pass
 
         # sampling with replacement
         sampled = tuple()
