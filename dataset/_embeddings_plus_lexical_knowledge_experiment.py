@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Union, Any
 import random
 
 from torch.utils.data import Dataset, DataLoader
@@ -21,6 +21,8 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                  exclude_reverse_hyponymy_from_non_hyponymy_relation: bool = True,
                  swap_hyponymy_relations: bool = False,
                  limit_hyponym_candidates_within_minibatch: bool = False,
+                 negative_sampling_from_nearest_neighbors: Optional[float] = None,
+                 kwargs_nearest_neighbor_search: Optional[Dict[str,Any]] = None,
                  verbose: bool = False, **kwargs_hyponymy_dataloader):
 
         super().__init__(word_embeddings_dataset, hyponymy_dataset,
@@ -28,21 +30,29 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                          entity_depth_information = None,
                          verbose=False, **kwargs_hyponymy_dataloader)
 
+        ### assertions ###
+
         # Make sure that negative example is not hyponyms, nor hypernyms.
         assert exclude_reverse_hyponymy_from_non_hyponymy_relation, "`exclude_reverse_hyponymy_from_non_hyponymy_relation` must be set to True."
+        # make sure the deprecated option is not specified.
+        assert not limit_hyponym_candidates_within_minibatch, "`limit_hyponym_candidates_within_minibatch` is deprecated. you must set to False."
 
-        # overwrite the taxonomy that was built by superclass
-        if isinstance(hyponymy_dataset, WordNetHyponymyDataset):
-            self._taxonomy = WordNetHyponymyPairSet(hyponymy_dataset=hyponymy_dataset)
-        elif isinstance(hyponymy_dataset, HyponymyDataset):
-            self._taxonomy = BasicHyponymyPairSet(hyponymy_dataset=hyponymy_dataset)
-        else:
-            raise NotImplementedError(f"unsupported hyponymy dataset type: {type(hyponymy_dataset)}")
+        # value of the negative sampling from nearest neighbors option.
+        if negative_sampling_from_nearest_neighbors is not None:
+            assert isinstance(negative_sampling_from_nearest_neighbors, float), "`negative_sampling_from_nearest_neighbors` must be float."
+            assert 0 <= negative_sampling_from_nearest_neighbors <= 1, "`negative_sampling_from_nearest_neighbors` must be within the range of [0,1]."
 
+        # Make sure the relation between the number of positive examples, negative examples, and embedding batch sizes.
         assert non_hyponymy_batch_size % hyponymy_batch_size == 0, f"`non_hyponymy_batch_size` must be a multiple of `hyponymy_batch_size`."
         if not limit_hyponym_candidates_within_minibatch:
             assert embedding_batch_size >= 2*hyponymy_batch_size + non_hyponymy_batch_size, \
             f"`embedding_batch_size` must be larger than `2*hyponymy_batch_size + non_hyponymy_batch_size`."
+
+        non_hyponymy_multiple = non_hyponymy_batch_size // hyponymy_batch_size
+        if len(non_hyponymy_relation_target) > 1:
+            n_mod = len(non_hyponymy_relation_target)
+            assert non_hyponymy_multiple % n_mod == 0, \
+                f"When you specify multiple `non_hyponymy_relation_target`, `non_hyponymy_batch_size` must be a multiple of the `hyponymy_batch_size`"
 
         available_options = ("hyponym","hypernym")
         if isinstance(non_hyponymy_relation_target, str):
@@ -50,18 +60,28 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         for target in non_hyponymy_relation_target:
             assert target in available_options, f"`non_hyponymy_relation_target` accepts: {','.join(available_options)}"
 
+        # build taxonomy instance using lexical dataset
+        if isinstance(hyponymy_dataset, WordNetHyponymyDataset):
+            self._taxonomy = WordNetHyponymyPairSet(hyponymy_dataset=hyponymy_dataset)
+        elif isinstance(hyponymy_dataset, HyponymyDataset):
+            self._taxonomy = BasicHyponymyPairSet(hyponymy_dataset=hyponymy_dataset)
+        else:
+            raise NotImplementedError(f"unsupported hyponymy dataset type: {type(hyponymy_dataset)}")
+
+        ## (optional) pre-build negative(=non-hyponymy, non-synonymy) nearest neighbors using word embeddings dataset.
+        if negative_sampling_from_nearest_neighbors is not None:
+            cfg = {} if kwargs_nearest_neighbor_search is None else kwargs_nearest_neighbor_search
+            self._taxonomy.prebuild_negative_nearest_neighbors(word_embeddings_dataset, top_k=cfg.get("top_k",None), top_q=cfg.get("top_q",None))
+
+        # set values
         self._non_hyponymy_batch_size = hyponymy_batch_size if non_hyponymy_batch_size is None else non_hyponymy_batch_size
-        self._non_hyponymy_multiple = non_hyponymy_batch_size // hyponymy_batch_size
+        self._non_hyponymy_multiple = non_hyponymy_multiple
         self._non_hyponymy_relation_target = non_hyponymy_relation_target
         self._exclude_reverse_hyponymy_from_non_hyponymy_relation = exclude_reverse_hyponymy_from_non_hyponymy_relation
         self._limit_hyponym_candidates_within_minibatch = limit_hyponym_candidates_within_minibatch
         self._swap_hyponymy_relations = swap_hyponymy_relations
+        self._negative_sampling_from_nearest_neighbors = negative_sampling_from_nearest_neighbors
         self._verbose = verbose
-
-        if len(non_hyponymy_relation_target) > 1:
-            n_mod = len(non_hyponymy_relation_target)
-            assert self._non_hyponymy_multiple % n_mod == 0, \
-                f"When you specify multiple `non_hyponymy_relation_target`, `non_hyponymy_batch_size` must be a multiple of the `hyponymy_batch_size`"
 
         if verbose:
             self.verify_batch_sizes()
@@ -99,18 +119,15 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
     def _create_non_hyponymy_samples_from_hyponymy_samples(self, batch_hyponymy: List[Dict[str,Union[str,float]]],
                                                             size_per_sample: int) -> List[Dict[str,Union[str,float]]]:
 
-        # (optional) limit hyponym candidates within the entity that appears in the minibatch.
-        if self._limit_hyponym_candidates_within_minibatch:
-            set_candidates = set()
-            for hyponymy in batch_hyponymy:
-                set_candidates.add(hyponymy["hyponym"])
-                set_candidates.add(hyponymy["hypernym"])
+        # (optional) take non-hypnymy samples from nearest neighbors.
+        if self._negative_sampling_from_nearest_neighbors is not None:
+            lst_is_take_from_nearest_neighbors = np.random.random(size=len(batch_hyponymy)) > (1.0 - self._negative_sampling_from_nearest_neighbors)
         else:
-            set_candidates = None
+            lst_is_take_from_nearest_neighbors = [False]*len(batch_hyponymy)
 
         # create non-hyponymy relation
         lst_non_hyponymy_samples = []
-        for hyponymy in batch_hyponymy:
+        for hyponymy, is_take_from_nearest_neighbors in zip(batch_hyponymy, lst_is_take_from_nearest_neighbors):
             hyper = hyponymy["hypernym"]
             hypo = hyponymy["hyponym"]
             dist = hyponymy["distance"]
@@ -122,11 +139,19 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
             lst_tup_sample_b = []
             if "hyponym" in self._non_hyponymy_relation_target:
+                if is_take_from_nearest_neighbors:
+                    set_candidates = self._taxonomy.negative_nearest_neighbors(entity=hyper)
+                else:
+                    set_candidates = None
                 lst_tup_sample_b_swap_hypo = self._taxonomy.sample_random_hyponyms(entity=hyper, candidates=set_candidates, size=size_per_sample,
                                                             exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation,
                                                             part_of_speech=pos)
                 lst_tup_sample_b.extend(lst_tup_sample_b_swap_hypo)
             if "hypernym" in self._non_hyponymy_relation_target:
+                if is_take_from_nearest_neighbors:
+                    set_candidates = self._taxonomy.negative_nearest_neighbors(entity=hypo)
+                else:
+                    set_candidates = None
                 lst_tup_sample_b_swap_hyper = self._taxonomy.sample_random_hypernyms(entity=hypo, candidates=set_candidates, size=size_per_sample,
                                                             exclude_hypernyms=self._exclude_reverse_hyponymy_from_non_hyponymy_relation,
                                                             part_of_speech=pos)
