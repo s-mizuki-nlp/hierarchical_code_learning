@@ -49,6 +49,11 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
     def indices_to_entities(self, indices: Iterable[int]):
         return [self._idx_to_word[index] for index in indices]
 
+    def entities_to_embeddings(self, entities: Iterable[str]):
+        iter_embeddings = (self[entity] for entity in entities)
+        embeddings = {obj["entity"]:obj["embedding"] for obj in iter_embeddings}
+        return embeddings
+
     @abstractmethod
     def vocab(self) -> Collection[str]:
         pass
