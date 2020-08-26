@@ -30,6 +30,10 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                          entity_depth_information = None,
                          verbose=False, **kwargs_hyponymy_dataloader)
 
+        # preprocess
+        if isinstance(non_hyponymy_relation_target, str):
+            non_hyponymy_relation_target = non_hyponymy_relation_target.split(",")
+
         ### assertions ###
 
         # Make sure that negative example is not hyponyms, nor hypernyms.
@@ -48,17 +52,15 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             assert embedding_batch_size >= 2*hyponymy_batch_size + non_hyponymy_batch_size, \
             f"`embedding_batch_size` must be larger than `2*hyponymy_batch_size + non_hyponymy_batch_size`."
 
+        available_options = ("hyponym","hypernym")
+        for target in non_hyponymy_relation_target:
+            assert target in available_options, f"`non_hyponymy_relation_target` accepts: {','.join(available_options)}"
+
         non_hyponymy_multiple = non_hyponymy_batch_size // hyponymy_batch_size
         if len(non_hyponymy_relation_target) > 1:
             n_mod = len(non_hyponymy_relation_target)
             assert non_hyponymy_multiple % n_mod == 0, \
                 f"When you specify multiple `non_hyponymy_relation_target`, `non_hyponymy_batch_size` must be a multiple of the `hyponymy_batch_size`"
-
-        available_options = ("hyponym","hypernym")
-        if isinstance(non_hyponymy_relation_target, str):
-            non_hyponymy_relation_target = non_hyponymy_relation_target.split(",")
-        for target in non_hyponymy_relation_target:
-            assert target in available_options, f"`non_hyponymy_relation_target` accepts: {','.join(available_options)}"
 
         # build taxonomy instance using lexical dataset
         if isinstance(hyponymy_dataset, WordNetHyponymyDataset):
