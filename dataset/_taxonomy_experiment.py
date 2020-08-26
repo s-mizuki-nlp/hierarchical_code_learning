@@ -189,7 +189,7 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
                     self._hyponymies[entity_type].add((hypernym, hyponym))
 
             # add oneself
-            for entity in self._trainset_hyponymies_and_self.keys():
+            for entity in self._trainset_hyponymies_and_self[entity_type].keys():
                 self._trainset_hyponymies_and_self[entity_type][entity].add(entity)
 
         # create tuple of entities as nodes
