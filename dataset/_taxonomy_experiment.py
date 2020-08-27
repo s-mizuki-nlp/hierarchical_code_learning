@@ -5,12 +5,15 @@ from __future__ import unicode_literals
 from __future__ import division
 from __future__ import print_function
 
+import sys, io, os
 from typing import Optional, Iterable, Tuple, Set, Type, List, Dict, Callable, Union
 from collections import defaultdict
 import numpy as np
 import math
 import progressbar
 import hashlib
+
+import pickle
 
 from .lexical_knowledge import HyponymyDataset
 from .word_embeddings import AbstractWordEmbeddingsDataset
@@ -247,9 +250,24 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
 
     def prebuild_negative_nearest_neighbors(self, word_embeddings_dataset: AbstractWordEmbeddingsDataset,
                                             top_k: Optional[int] = None, top_q: Optional[float] = None,
-                                            use_cache: bool = True):
+                                            use_cache: bool = True, cache_dir: str = "./_cache/"):
         print(f"lookup negative nearest neighbors...")
-        self._trainset_negative_nearest_neighbors = defaultdict(lambda :{})
+
+        # intialize internal attribute
+        self._trainset_negative_nearest_neighbors = {}
+        for entity_type in self.entity_types:
+            self._trainset_negative_nearest_neighbors[entity_type] = {}
+
+        if use_cache:
+            cache_file_name = "_".join(map(str, [hash(self), hash(word_embeddings_dataset), top_k, top_q]))
+            path = os.path.join(cache_dir, cache_file_name)
+            if os.path.exists(cache_file_name):
+                print(f"load from cache file:{path}")
+                with io.open(path, mode="rb") as ifs:
+                    self._trainset_negative_nearest_neighbors = pickle.load(ifs)
+                return True
+            else:
+                print(f"cache will be saved as:{path}")
 
         for entity_type in self.entity_types:
             # switch entity type
@@ -272,9 +290,14 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
                 lst_similar_entities = entity_similarity_model.most_similar(vector=vec_e, top_k=top_n, excludes=positive_entities)
                 self._trainset_negative_nearest_neighbors[entity_type][entity] = tuple(e for e, sim in lst_similar_entities)
 
-
         # unset active entity type
         self._active_entity_type = None
+
+        if use_cache:
+            if not os.path.exists(cache_dir):
+                os.makedirs(cache_dir)
+            with io.open(path, mode="wb") as ofs:
+                pickle.dump(self._trainset_negative_nearest_neighbors, ofs)
 
     @property
     def ACTIVE_ENTITY_TYPE(self):
