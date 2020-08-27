@@ -9,6 +9,7 @@ from typing import Optional, Iterable, Tuple, Set, Type, List, Dict, Callable, U
 from collections import defaultdict
 import numpy as np
 import math
+import progressbar
 
 from .lexical_knowledge import HyponymyDataset
 from .word_embeddings import AbstractWordEmbeddingsDataset
@@ -233,23 +234,33 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
         # unset active entity type
         self._active_entity_type = None
 
-    def prebuild_negative_nearest_neighbors(self, word_embeddings_dataset: AbstractWordEmbeddingsDataset, top_k: Optional[int] = None, top_q: Optional[float] = None):
+    def prebuild_negative_nearest_neighbors(self, word_embeddings_dataset: AbstractWordEmbeddingsDataset,
+                                            top_k: Optional[int] = None, top_q: Optional[float] = None,
+                                            use_cache: bool = True):
         print(f"lookup negative nearest neighbors...")
         self._trainset_negative_nearest_neighbors = defaultdict(lambda :{})
-        for entity_type, in self.entity_types:
-            print(f"pos:{entity_type}, entity size:{len(self.nodes)}")
+
+        for entity_type in self.entity_types:
             # switch entity type
             self.ACTIVE_ENTITY_TYPE = entity_type
-            # get word embeddings of the nodes
-            iter_embeddings = (word_embeddings_dataset[entity] for entity in self.nodes)
-            embeddings = {obj["entity"]:obj["embedding"] for obj in iter_embeddings}
+            top_n = top_k if top_k is not None else math.ceil(len(self.nodes)*top_q)
+            print(f"entity type:{entity_type}, entity size:{len(self.nodes)}, nearest neighbors per entity: {top_n}")
+
             # instanciate similarity search class
+            embeddings = word_embeddings_dataset.entities_to_embeddings(self.nodes, ignore_encode_error=True)
             entity_similarity_model = EmbeddingSimilaritySearch(embeddings=embeddings)
-            for entity in self.nodes:
+
+            # find negative nearest neighbors
+            q = progressbar.ProgressBar(max_value=len(self.nodes))
+            for idx, entity in enumerate(self.nodes):
+                q.update(idx+1)
+                vec_e = word_embeddings_dataset.encode(entity)
+                if vec_e is None:
+                    continue
                 positive_entities = self.hypernyms_and_hyponyms_and_self(entity)
-                vec_e = word_embeddings_dataset[entity]["embedding"]
-                lst_similar_entities = entity_similarity_model.most_similar(vector=vec_e, top_k=top_k, top_q=top_q, excludes=positive_entities)
+                lst_similar_entities = entity_similarity_model.most_similar(vector=vec_e, top_k=top_n, excludes=positive_entities)
                 self._trainset_negative_nearest_neighbors[entity_type][entity] = tuple(e for e, sim in lst_similar_entities)
+
 
         # unset active entity type
         self._active_entity_type = None
