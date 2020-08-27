@@ -261,8 +261,8 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
         if use_cache:
             cache_file_name = "_".join(map(str, [hash(self), hash(word_embeddings_dataset), top_k, top_q]))
             path = os.path.join(cache_dir, cache_file_name)
-            if os.path.exists(cache_file_name):
-                print(f"load from cache file:{path}")
+            if os.path.exists(path):
+                print(f"load from the cache file:{path}")
                 with io.open(path, mode="rb") as ifs:
                     self._trainset_negative_nearest_neighbors = pickle.load(ifs)
                 return True
