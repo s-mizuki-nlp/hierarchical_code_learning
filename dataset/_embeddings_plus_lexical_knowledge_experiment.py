@@ -45,6 +45,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         if negative_sampling_from_nearest_neighbors is not None:
             assert isinstance(negative_sampling_from_nearest_neighbors, float), "`negative_sampling_from_nearest_neighbors` must be float."
             assert 0 <= negative_sampling_from_nearest_neighbors <= 1, "`negative_sampling_from_nearest_neighbors` must be within the range of [0,1]."
+            assert kwargs_nearest_neighbor_search is not None, "you must specify `kwargs_nearest_neighbor_search` argument. it includes either `top_k` or `top_q` parameter."
 
         # Make sure the relation between the number of positive examples, negative examples, and embedding batch sizes.
         assert non_hyponymy_batch_size % hyponymy_batch_size == 0, f"`non_hyponymy_batch_size` must be a multiple of `hyponymy_batch_size`."
