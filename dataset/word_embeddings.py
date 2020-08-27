@@ -49,10 +49,16 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
     def indices_to_entities(self, indices: Iterable[int]):
         return [self._idx_to_word[index] for index in indices]
 
-    def entities_to_embeddings(self, entities: Iterable[str]):
-        iter_embeddings = (self[entity] for entity in entities)
-        embeddings = {obj["entity"]:obj["embedding"] for obj in iter_embeddings}
-        return embeddings
+    def entities_to_embeddings(self, entities: Iterable[str], ignore_encode_error: bool = False):
+        iter_embeddings = map(self.encode, entities)
+        if ignore_encode_error:
+            dict_embeddings = {entity:embedding for entity, embedding in zip(entities, iter_embeddings) if embedding is not None}
+        else:
+            dict_embeddings = {}
+            for entity, embedding in zip(entities, iter_embeddings):
+                assert embedding is not None, f"string `{entity}` cannot be encoded."
+                dict_embeddings[entity] = embedding
+        return dict_embeddings
 
     @abstractmethod
     def vocab(self) -> Collection[str]:
