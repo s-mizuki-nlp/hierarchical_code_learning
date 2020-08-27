@@ -5,6 +5,7 @@ import io, os, json
 from typing import Union, Collection, Optional, Dict, Any, Iterable
 
 from abc import ABCMeta, abstractmethod
+import hashlib
 
 from nltk.tokenize import MWETokenizer
 import torch
@@ -19,6 +20,16 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
     _idx_to_word = {}
     transform = None
     _entity_info = None
+
+    def __hash__(self):
+        m = hashlib.md5()
+
+        iter_entities = self.indices_to_entities(range(len(self)))
+        for entity in iter_entities:
+            m.update(entity.encode())
+        m.update(str(self.n_dim).encode())
+
+        return int(m.hexdigest(), 16)
 
     def phrase_splitter(self, phrase: str):
         return self._mwe_tokenizer.tokenize(phrase.split(self._PHRASE_DELIMITER))
