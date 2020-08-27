@@ -10,6 +10,7 @@ from collections import defaultdict
 import numpy as np
 import math
 import progressbar
+import hashlib
 
 from .lexical_knowledge import HyponymyDataset
 from .word_embeddings import AbstractWordEmbeddingsDataset
@@ -206,6 +207,16 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
 
         self.record_ancestors_and_descendants(dict_iter_trainset_pairs)
         self._random_number_generator = self._random_number_generator_iterator(max_value=self.n_nodes_max)
+
+    def __hash__(self):
+        # compute persistent hash using nodes in the taxonomy.
+        m = hashlib.md5()
+        for entity_type in sorted(self.entity_types):
+            m.update(entity_type.encode())
+            for node in sorted(self._nodes[entity_type]):
+                m.update(node.encode())
+
+        return int(m.hexdigest(), 16)
 
     def record_ancestors_and_descendants(self, dict_iter_hyponymy_pairs):
         self._hyponymies = defaultdict(lambda :set())
