@@ -4,7 +4,7 @@
 from typing import List, Dict, Optional, Union, Any
 import random
 
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Subset
 import numpy as np
 
 from .word_embeddings import AbstractWordEmbeddingsDataset
@@ -24,11 +24,6 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                  negative_sampling_from_nearest_neighbors: Optional[float] = None,
                  kwargs_nearest_neighbor_search: Optional[Dict[str,Any]] = None,
                  verbose: bool = False, **kwargs_hyponymy_dataloader):
-
-        super().__init__(word_embeddings_dataset, hyponymy_dataset,
-                         embedding_batch_size, hyponymy_batch_size,
-                         entity_depth_information = None,
-                         verbose=False, **kwargs_hyponymy_dataloader)
 
         # preprocess
         if isinstance(non_hyponymy_relation_target, str):
@@ -64,12 +59,16 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                 f"When you specify multiple `non_hyponymy_relation_target`, `non_hyponymy_batch_size` must be a multiple of the `hyponymy_batch_size`"
 
         # build taxonomy instance using lexical dataset
-        if isinstance(hyponymy_dataset, WordNetHyponymyDataset):
+        if isinstance(hyponymy_dataset, Subset):
+            instance = hyponymy_dataset.dataset
+        else:
+            instance = hyponymy_dataset
+        if isinstance(instance, WordNetHyponymyDataset):
             self._taxonomy = WordNetHyponymyPairSet(hyponymy_dataset=hyponymy_dataset)
-        elif isinstance(hyponymy_dataset, HyponymyDataset):
+        elif isinstance(instance, HyponymyDataset):
             self._taxonomy = BasicHyponymyPairSet(hyponymy_dataset=hyponymy_dataset)
         else:
-            raise NotImplementedError(f"unsupported hyponymy dataset type: {type(hyponymy_dataset)}")
+            raise NotImplementedError(f"unsupported hyponymy dataset type: {type(instance)}")
 
         ## (optional) pre-build negative(=non-hyponymy, non-synonymy) nearest neighbors using word embeddings dataset.
         if negative_sampling_from_nearest_neighbors is not None:
@@ -77,6 +76,15 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             self._taxonomy.prebuild_negative_nearest_neighbors(word_embeddings_dataset, top_k=cfg.get("top_k",None), top_q=cfg.get("top_q",None))
 
         # set values
+        self._word_embeddings_dataset = word_embeddings_dataset
+        self._hyponymy_dataset = hyponymy_dataset
+        self._n_embeddings = len(word_embeddings_dataset)
+        self._n_hyponymy = len(hyponymy_dataset)
+
+        self._embedding_batch_size = embedding_batch_size
+        self._hyponymy_batch_size = hyponymy_batch_size
+        self._hyponymy_dataloader = DataLoader(hyponymy_dataset, collate_fn=lambda v:v, batch_size=hyponymy_batch_size, **kwargs_hyponymy_dataloader)
+
         self._non_hyponymy_batch_size = hyponymy_batch_size if non_hyponymy_batch_size is None else non_hyponymy_batch_size
         self._non_hyponymy_multiple = non_hyponymy_multiple
         self._non_hyponymy_relation_target = non_hyponymy_relation_target
@@ -88,6 +96,11 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
         if verbose:
             self.verify_batch_sizes()
+
+        # hyponymy sample order
+        n_hyponymy = len(self._hyponymy_dataset)
+        self._sample_order = list(range(n_hyponymy))
+        self.shuffle_hyponymy_dataset()
 
     def verify_batch_sizes(self):
 
