@@ -71,6 +71,15 @@ class AbstractWordEmbeddingsDataset(Dataset, metaclass=ABCMeta):
                 dict_embeddings[entity] = embedding
         return dict_embeddings
 
+    def cosine_similarity(self, entity_x: str, entity_y: str, oov_value: Optional[float] = None):
+        vec_x = self.encode(entity_x)
+        vec_y = self.encode(entity_y)
+        if (vec_x is None) or (vec_y is None):
+            return oov_value
+
+        cosine = np.sum(vec_x * vec_y) / (np.linalg.norm(vec_x) * np.linalg.norm(vec_y))
+        return cosine
+
     @abstractmethod
     def vocab(self) -> Collection[str]:
         pass
