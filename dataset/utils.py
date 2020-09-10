@@ -55,6 +55,7 @@ class EmbeddingSimilaritySearch(object):
             vector = self._embeddings[self._entity2idx[entity]]
             remove_query_entity = True
         else:
+            vector = xp.asarray(vector)
             remove_query_entity = False
 
         if top_q is not None:
