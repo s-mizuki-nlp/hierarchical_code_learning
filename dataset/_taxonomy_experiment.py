@@ -35,6 +35,10 @@ class BasicHyponymyPairSet(object):
         return self._nodes
 
     @property
+    def set_nodes(self):
+        return self._set_nodes
+
+    @property
     def n_nodes_max(self):
         return len(self.nodes)
 
@@ -78,6 +82,7 @@ class BasicHyponymyPairSet(object):
             self._trainset_hyponymies_and_self[entity].add(entity)
 
         # set nodes
+        self._set_nodes = nodes
         self._nodes = tuple(nodes)
 
     def prebuild_negative_nearest_neighbors(self, word_embeddings_dataset: AbstractWordEmbeddingsDataset, top_k: Optional[int] = None, top_q: Optional[float] = None):
@@ -178,7 +183,7 @@ class BasicHyponymyPairSet(object):
         return lst_ret
 
     def is_in_dataset(self, entity, **kwargs):
-        return entity in self.nodes
+        return entity in self.set_nodes
 
     def is_hyponymy_relation(self, hypernym, hyponym, include_reverse_hyponymy: bool = True, not_exists = None, **kwargs):
         if not (self.is_in_dataset(hypernym) and self.is_in_dataset(hyponym)):
@@ -243,6 +248,7 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
                 self._trainset_hyponymies_and_self[entity_type][entity].add(entity)
 
         # create tuple of entities as nodes
+        self._set_nodes = nodes
         self._nodes = {entity_type:tuple(entities) for entity_type, entities in nodes.items()}
 
         # unset active entity type
@@ -323,6 +329,10 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
     @property
     def nodes(self):
         return self._nodes.get(self.ACTIVE_ENTITY_TYPE, self._nodes)
+
+    @property
+    def set_nodes(self):
+        return self._set_nodes.get(self.ACTIVE_ENTITY_TYPE, self._set_nodes)
 
     @property
     def trainset_hyponymies_and_self(self):
