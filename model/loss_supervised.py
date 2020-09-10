@@ -365,12 +365,16 @@ class LowestCommonAncestorLengthPredictionLoss(HyponymyScoreLoss):
 
 class EntailmentProbabilityLoss(HyponymyScoreLoss):
 
-    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean', adjust_class_weights: bool = False) -> None:
+    _GAMMA_FOCAL_LOSS = 1.0
+
+    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean', loss_metric: str = "cross_entropy") -> None:
 
         super(EntailmentProbabilityLoss, self).__init__(scale=scale,
                     distance_metric="binary-cross-entropy",
                     size_average=size_average, reduce=reduce, reduction=reduction)
-        self._adjust_class_weights = adjust_class_weights
+        accepted_loss_metric = ("cross_entropy", "focal_loss")
+        assert loss_metric in accepted_loss_metric, f"`loss_metric` must be one of these: {','.join(accepted_loss_metric)}"
+        self._loss_metric = loss_metric
 
     def forward(self, t_prob_c_batch: torch.Tensor, lst_hyponymy_tuple: List[Tuple[int, int, float]]) -> torch.Tensor:
         """
@@ -402,21 +406,19 @@ class EntailmentProbabilityLoss(HyponymyScoreLoss):
         y_prob_synonym = torch.clamp(y_prob_synonym, min=1E-5, max=(1.0-1E-5))
         y_prob_other = torch.clamp(y_prob_other, min=1E-5, max=(1.0-1E-5))
 
-        if self._adjust_class_weights:
-            n_pos = (y_hyponymy_score >= 1.0).float().sum()
-            n_neutral = (y_hyponymy_score == 0.0).float().sum()
-            n_neg = (y_hyponymy_score <= -1.0).float().sum()
-            n_total = n_pos + n_neutral + n_neg
-            n_class = (n_pos > 0).float() + (n_neutral > 0).float() + (n_neg > 0).float()
-            w_pos = n_total / (n_pos * n_class) if n_pos > 0 else 0.0
-            w_neutral = n_total / (n_neutral * n_class) if n_neutral > 0 else 0.0
-            w_neg = n_total / (n_neg * n_class) if n_neg > 0 else 0.0
-        else:
-            w_pos = w_neutral = w_neg = 1.0
+        if self._loss_metric == "cross_entropy":
+            w_entail = w_synonym = w_other = torch.ones_like(y_hyponymy_score, dtype=dtype)
+        elif self._loss_metric == "focal_loss":
+            w_entail = (1.0 - y_prob_entail)**self._GAMMA_FOCAL_LOSS
+            w_synonym = (1.0 - y_prob_synonym)**self._GAMMA_FOCAL_LOSS
+            w_other = (1.0 - y_prob_other)**self._GAMMA_FOCAL_LOSS
 
-        t_nll = w_pos*(y_hyponymy_score >= 1.0).float()*torch.log(y_prob_entail) + \
-                w_neutral*(y_hyponymy_score == 0.0).float()*torch.log(y_prob_synonym) + \
-                w_neg*(y_hyponymy_score <= -1.0).float()*torch.log(y_prob_other)
+        else:
+            raise NotImplementedError(f"unknown loss metric: {self._loss_metric}")
+
+        t_nll = w_entail*(y_hyponymy_score >= 1.0).float()*torch.log(y_prob_entail) + \
+                w_synonym*(y_hyponymy_score == 0.0).float()*torch.log(y_prob_synonym) + \
+                w_other*(y_hyponymy_score <= -1.0).float()*torch.log(y_prob_other)
         t_nll = -1.0 * t_nll
 
         # reduction
