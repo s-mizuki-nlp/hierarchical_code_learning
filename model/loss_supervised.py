@@ -365,9 +365,8 @@ class LowestCommonAncestorLengthPredictionLoss(HyponymyScoreLoss):
 
 class EntailmentProbabilityLoss(HyponymyScoreLoss):
 
-    _GAMMA_FOCAL_LOSS = 1.0
-
-    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean', loss_metric: str = "cross_entropy") -> None:
+    def __init__(self, scale: float = 1.0, size_average=None, reduce=None, reduction='mean',
+                 loss_metric: str = "cross_entropy", focal_loss_gamma = 1.0) -> None:
 
         super(EntailmentProbabilityLoss, self).__init__(scale=scale,
                     distance_metric="binary-cross-entropy",
@@ -375,6 +374,7 @@ class EntailmentProbabilityLoss(HyponymyScoreLoss):
         accepted_loss_metric = ("cross_entropy", "focal_loss")
         assert loss_metric in accepted_loss_metric, f"`loss_metric` must be one of these: {','.join(accepted_loss_metric)}"
         self._loss_metric = loss_metric
+        self._focal_loss_gamma = focal_loss_gamma
 
     def forward(self, t_prob_c_batch: torch.Tensor, lst_hyponymy_tuple: List[Tuple[int, int, float]]) -> torch.Tensor:
         """
@@ -409,9 +409,9 @@ class EntailmentProbabilityLoss(HyponymyScoreLoss):
         if self._loss_metric == "cross_entropy":
             w_entail = w_synonym = w_other = torch.ones_like(y_hyponymy_score, dtype=dtype)
         elif self._loss_metric == "focal_loss":
-            w_entail = (1.0 - y_prob_entail)**self._GAMMA_FOCAL_LOSS
-            w_synonym = (1.0 - y_prob_synonym)**self._GAMMA_FOCAL_LOSS
-            w_other = (1.0 - y_prob_other)**self._GAMMA_FOCAL_LOSS
+            w_entail = (1.0 - y_prob_entail)**self._focal_loss_gamma
+            w_synonym = (1.0 - y_prob_synonym)**self._focal_loss_gamma
+            w_other = (1.0 - y_prob_other)**self._focal_loss_gamma
 
         else:
             raise NotImplementedError(f"unknown loss metric: {self._loss_metric}")
