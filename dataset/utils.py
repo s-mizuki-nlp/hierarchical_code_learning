@@ -86,6 +86,7 @@ class EmbeddingSimilaritySearch(object):
         if hasattr(xp, "asnumpy"):
             # convert from cupy object to numpy array.
             vec_indices_topk = xp.asnumpy(vec_indices_topk)
+            vec_similarity = xp.asnumpy(vec_similarity)
 
         lst_ret = [(idx2entity[idx], vec_similarity[idx]) for idx in vec_indices_topk]
         return lst_ret
