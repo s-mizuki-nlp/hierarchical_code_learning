@@ -156,7 +156,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             lst_tup_sample_b = []
             if "hyponym" in self._non_hyponymy_relation_target:
                 if is_take_from_nearest_neighbors:
-                    set_candidates = self._taxonomy.negative_nearest_neighbors(entity=hyper)
+                    set_candidates = self._taxonomy.negative_nearest_neighbors(entity=hyper, part_of_speech=pos)
                 else:
                     set_candidates = None
                 lst_tup_sample_b_swap_hypo = self._taxonomy.sample_random_hyponyms(entity=hyper, candidates=set_candidates, size=size_per_sample,
@@ -165,7 +165,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                 lst_tup_sample_b.extend(lst_tup_sample_b_swap_hypo)
             if "hypernym" in self._non_hyponymy_relation_target:
                 if is_take_from_nearest_neighbors:
-                    set_candidates = self._taxonomy.negative_nearest_neighbors(entity=hypo)
+                    set_candidates = self._taxonomy.negative_nearest_neighbors(entity=hypo, part_of_speech=pos)
                 else:
                     set_candidates = None
                 lst_tup_sample_b_swap_hyper = self._taxonomy.sample_random_hypernyms(entity=hypo, candidates=set_candidates, size=size_per_sample,

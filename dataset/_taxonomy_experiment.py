@@ -117,7 +117,7 @@ class BasicHyponymyPairSet(object):
     def hypernyms_and_hyponyms_and_self(self, entity) -> Set[str]:
         return self.trainset_hyponymies_and_self.get(entity, set())
 
-    def negative_nearest_neighbors(self, entity) -> Iterable[str]:
+    def negative_nearest_neighbors(self, entity, **kwargs) -> Iterable[str]:
         return self.trainset_negative_nearest_neighbors.get(entity, tuple())
 
     def sample_non_hyponymy(self, entity, candidates: Optional[Iterable[str]] = None,
@@ -357,3 +357,7 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
     def is_hyponymy_relation(self, hypernym, hyponym, include_reverse_hyponymy: bool = True, not_exists = None, **kwargs):
         self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
         return super().is_hyponymy_relation(hypernym, hyponym, include_reverse_hyponymy, not_exists)
+
+    def negative_nearest_neighbors(self, entity, **kwargs) -> Iterable[str]:
+        self.ACTIVE_ENTITY_TYPE = kwargs.get("part_of_speech", None)
+        return super().negative_nearest_neighbors(entity)
