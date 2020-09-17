@@ -11,6 +11,7 @@ from collections import defaultdict
 import pickle
 import numpy as np
 import torch
+from torch.optim.optimizer import Optimizer
 from torch.utils.data import DataLoader
 from torch.utils.data._utils.collate import default_collate
 from torch.nn.modules.loss import _Loss
@@ -34,6 +35,7 @@ class UnsupervisedTrainer(pl.LightningModule):
                  learning_rate: Optional[float] = 0.001,
                  model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
                  loss_parameter_schedulers: Optional[Dict[str, Dict[str, Callable[[float], float]]]] = None,
+                 optimizer_class: Optional[Optimizer] = None
                  ):
 
         super(UnsupervisedTrainer, self).__init__()
@@ -52,6 +54,7 @@ class UnsupervisedTrainer(pl.LightningModule):
             "val": dataloader_val,
             "test": dataloader_test
         }
+        self._optimizer_class = optimizer_class
         # auxiliary function that is solely used for validation
         self._auxiliary = HyponymyScoreLoss()
 
@@ -73,7 +76,10 @@ class UnsupervisedTrainer(pl.LightningModule):
         return (next(self._model.parameters())).device
 
     def configure_optimizers(self):
-        opt = Adam(self.parameters(), lr=self._learning_rate)
+        if self._optimizer_class is None:
+            opt = Adam(self.parameters(), lr=self._learning_rate)
+        else:
+            opt = self._optimizer_class(params=self.parameters(), lr=self._learning_rate)
         return opt
 
     def _asssign_null_collate_function(self, dataloader: Optional[DataLoader]):
@@ -274,6 +280,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
                  dataloader_val: Optional[DataLoader] = None,
                  dataloader_test: Optional[DataLoader] = None,
                  learning_rate: Optional[float] = 0.001,
+                 optimizer_class: Optional[Optimizer] = None,
                  use_intermediate_representation: bool = False,
                  model_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
                  loss_parameter_schedulers: Optional[Dict[str, Callable[[float], float]]] = None,
@@ -281,7 +288,7 @@ class SupervisedTrainer(UnsupervisedTrainer):
                  ):
 
         super().__init__(model, loss_reconst, loss_mutual_info, dataloader_train, dataloader_val, dataloader_test, learning_rate,
-                         model_parameter_schedulers, loss_parameter_schedulers)
+                         model_parameter_schedulers, loss_parameter_schedulers, optimizer_class)
 
         self._use_intermediate_representation = use_intermediate_representation
         self._loss_hyponymy = loss_hyponymy
