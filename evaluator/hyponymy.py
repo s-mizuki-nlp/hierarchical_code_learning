@@ -105,11 +105,13 @@ class BasePredictor(object, metaclass=ABCMeta):
 
         return score
 
-    def calc_entailment_probability(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like):
+    def calc_class_probabilities(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like):
         t_code_prob_x = self._numpy_to_tensor(mat_code_prob_x)
         t_code_prob_y = self._numpy_to_tensor(mat_code_prob_y)
-        p_xy = self._auxiliary.calc_ancestor_probability(t_code_prob_x, t_code_prob_y).item()
-        return p_xy
+        p_entail = self._auxiliary.calc_ancestor_probability(t_code_prob_x, t_code_prob_y).item()
+        p_synonym = self._auxiliary.calc_synonym_probability(t_code_prob_x, t_code_prob_y).item()
+        p_other = 1.0 - (p_entail + p_synonym)
+        return {"entail":p_entail, "synonym":p_synonym, "other":p_other}
 
     @abstractmethod
     def THRESHOLD(self):
@@ -242,7 +244,7 @@ class HyponymyScoreBasedPredictor(BasePredictor):
 class EntailmentProbabilityBasedPredictor(BasePredictor):
 
     def __init__(self,
-                 threshold: Optional[float] = 0.5):
+                 threshold: Optional[float] = 1/3):
         """
         predicts hyponymy relation based on the entailment probability of entity pair.
 
@@ -253,9 +255,9 @@ class EntailmentProbabilityBasedPredictor(BasePredictor):
 
     def predict_directionality(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like) -> str:
         # x: hypernym, y: hyponym
-        p_xy = self.calc_entailment_probability(mat_code_prob_x, mat_code_prob_y)
+        p_xy = self.calc_class_probabilities(mat_code_prob_x, mat_code_prob_y)["entail"]
         # x: hyponym, y: hypernym
-        p_yx = self.calc_entailment_probability(mat_code_prob_y, mat_code_prob_x)
+        p_yx = self.calc_class_probabilities(mat_code_prob_y, mat_code_prob_x)["entail"]
 
         if p_xy > p_yx:
             return "x"
@@ -265,7 +267,7 @@ class EntailmentProbabilityBasedPredictor(BasePredictor):
     def predict_is_hyponymy_relation(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like, threshold: Optional[float] = None) -> bool:
 
         # calculate entailment probability
-        prob = self.calc_entailment_probability(mat_code_prob_x, mat_code_prob_y)
+        prob = self.calc_class_probabilities(mat_code_prob_x, mat_code_prob_y)["entail"]
 
         # compare score with the threshold.
         threshold = self._threshold if threshold is None else threshold
@@ -278,8 +280,8 @@ class EntailmentProbabilityBasedPredictor(BasePredictor):
     def predict_hyponymy_relation(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like, threshold: Optional[float] = None) -> str:
 
         # calculate hyponymy score for both forward and reversed direction
-        p_forward = self.calc_entailment_probability(mat_code_prob_x, mat_code_prob_y)
-        p_reversed = self.calc_entailment_probability(mat_code_prob_y, mat_code_prob_x)
+        p_forward = self.calc_class_probabilities(mat_code_prob_x, mat_code_prob_y)["entail"]
+        p_reversed = self.calc_class_probabilities(mat_code_prob_y, mat_code_prob_x)["entail"]
 
         # compare score with the threshold.
         threshold = self._threshold if threshold is None else threshold
@@ -296,8 +298,8 @@ class EntailmentProbabilityBasedPredictor(BasePredictor):
         else:
             return "other"
 
-    def infer_score(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like) -> str:
-        return self.calc_entailment_probability(mat_code_prob_x, mat_code_prob_y)
+    def infer_score(self, mat_code_prob_x: Array_like, mat_code_prob_y: Array_like) -> float:
+        return self.calc_class_probabilities(mat_code_prob_x, mat_code_prob_y)["entail"]
 
     @property
     def THRESHOLD(self):
