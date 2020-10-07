@@ -253,6 +253,7 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
                  discretizer: Optional[nn.Module] = None,
                  detach_previous_output: bool = False,
                  time_distributed: bool = True,
+                 input_tranformation: str = "time_distributed",
                  dtype=torch.float32,
                  **kwargs):
 
@@ -269,11 +270,19 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
         self._n_ary_internal = None
         self._time_distributed = time_distributed
         self._detach_previous_output = detach_previous_output
+        self._input_transformation = input_tranformation
 
         self._build()
 
     def _build(self):
-        self._x_to_h = nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden)
+        if self._input_transformation == "time_distributed":
+            self._x_to_h = nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden)
+        elif self._input_transformation == "time_dependent":
+            lst_layers = [nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden, bias=True) for _ in range(self._n_digits)]
+            self._x_to_h = nn.ModuleList(lst_layers)
+        else:
+            print(f"unknown `input_transformation` value: {self._input_transformation}")
+
         self._lstm_cell = nn.LSTMCell(input_size=self._n_dim_hidden+self._n_dim_emb_code, hidden_size=self._n_dim_hidden, bias=True)
         self._embedding_code = nn.Linear(in_features=self._n_ary, out_features=self._n_dim_emb_code, bias=False)
 
@@ -304,16 +313,23 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
         dtype, device = self._dtype_and_device(input_x)
         n_batch = input_x.shape[0]
 
-        # v_h: (n_batch, n_dim_hidden)
-        t_h = torch.tanh(self._x_to_h(input_x))
-
         # initialize variables
         lst_prob_c = []
         lst_latent_code = []
         h_d, c_d, e_d = self._init_state(n_batch, dtype, device)
 
+        # v_h: (n_batch, n_dim_hidden)
+        if self._input_transformation == "time_distributed":
+            t_h = torch.tanh(self._x_to_h(input_x))
+
         for d in range(self._n_digits):
-            input = torch.cat([t_h, e_d], dim=-1)
+            if self._input_transformation == "time_distributed":
+                t_h_d = t_h
+            elif self._input_transformation == "time_dependent":
+                x_to_h_d = self._x_to_h[d]
+                t_h_d = torch.tanh(x_to_h_d(input_x))
+
+            input = torch.cat([t_h_d, e_d], dim=-1)
             h_d, c_d = self._lstm_cell(input, (h_d, c_d))
 
             # compute Pr{c_d=d|c_{<d}}
