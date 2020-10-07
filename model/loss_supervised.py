@@ -371,7 +371,7 @@ class EntailmentProbabilityLoss(HyponymyScoreLoss):
         super(EntailmentProbabilityLoss, self).__init__(scale=scale,
                     distance_metric="binary-cross-entropy",
                     size_average=size_average, reduce=reduce, reduction=reduction)
-        accepted_loss_metric = ("cross_entropy", "focal_loss")
+        accepted_loss_metric = ("cross_entropy", "focal_loss", "dice_loss")
         assert loss_metric in accepted_loss_metric, f"`loss_metric` must be one of these: {','.join(accepted_loss_metric)}"
         self._loss_metric = loss_metric
         self._focal_loss_gamma = focal_loss_gamma
@@ -412,23 +412,29 @@ class EntailmentProbabilityLoss(HyponymyScoreLoss):
                   (y_hyponymy_score == 0.0).float() * y_prob_synonym + \
                   (y_hyponymy_score <= -1.0).float() * y_prob_other
 
-        if self._loss_metric == "cross_entropy":
+        if self._loss_metric == "cross_entropy": # cross-entropy loss
             y_weights = torch.ones_like(y_probs, dtype=dtype)
-        elif self._loss_metric == "focal_loss":
+            loss_i = -1.0 * y_weights * torch.log(y_probs)
+
+        elif self._loss_metric == "focal_loss": # focal loss
             y_weights = (1.0 - y_probs)**self._focal_loss_gamma
             if self._focal_loss_normalize_weight:
                 y_weights = len(y_probs) * y_weights / torch.sum(y_weights)
+            loss_i = -1.0 * y_weights * torch.log(y_probs)
+
+        elif self._loss_metric == "dice_loss": # dice loss [Li+, 2020]
+            gamma = 1.0
+            adjusted_y_probs = ((1.0 - y_probs)**self._focal_loss_gamma) * y_probs
+            loss_i = 1.0 - (2. * adjusted_y_probs + gamma) / (adjusted_y_probs + 1 + gamma)
         else:
             raise NotImplementedError(f"unknown loss metric: {self._loss_metric}")
 
-        t_nll = -1.0 * y_weights * torch.log(y_probs)
-
         # reduction
         if self.reduction == "sum":
-            loss = torch.sum(t_nll)
+            loss = torch.sum(loss_i)
         elif self.reduction.endswith("mean"):
-            loss = torch.mean(t_nll)
+            loss = torch.mean(loss_i)
         elif self.reduction == "none":
-            loss = t_nll
+            loss = loss_i
 
         return loss * self._scale
