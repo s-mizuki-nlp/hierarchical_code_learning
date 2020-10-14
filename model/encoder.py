@@ -400,3 +400,129 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
     @gate_open_ratio.setter
     def gate_open_ratio(self, value):
         pass
+
+
+
+class TransformerEncoder(SimpleEncoder):
+
+    def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int,
+                 normalize_digit_embeddings: bool,
+                 n_layer: int = 4,
+                 n_head: int = 4,
+                 dropout: float = 0.1,
+                 n_dim_emb_digits: Optional[int] = None,
+                 time_distributed: bool = True,
+                 how_digit_embeddings: str = "add",
+                 dtype=torch.float32,
+                 **kwargs):
+
+        super(SimpleEncoder, self).__init__()
+
+        self._n_dim_emb = n_dim_emb
+        self._n_dim_emb_digits = n_dim_emb if n_dim_emb_digits is None else n_dim_emb_digits
+        self._n_digits = n_digits
+        self._n_ary = n_ary
+        self._n_layer = n_layer
+        self._n_head = n_head
+        self._dropout = dropout
+        self._dtype = dtype
+        self._time_distributed = time_distributed
+        self._how_digit_embeddings = how_digit_embeddings
+        self._normalize_digit_embeddings = normalize_digit_embeddings
+
+        self._build()
+
+    def _build(self):
+
+        # digit embeddings
+        cfg_embedding_layer = {
+            "num_embeddings":self._n_digits,
+            "embedding_dim":self._n_dim_emb_digits,
+            "max_norm":1.0 if self._normalize_digit_embeddings else None
+        }
+        self._embedding_digit = nn.Embedding(**cfg_embedding_layer)
+
+        if self._how_digit_embeddings == "add":
+            n_dim_transformer = self._n_dim_emb
+        elif self._how_digit_embeddings == "concat":
+            n_dim_transformer = self._n_dim_emb + self._n_dim_emb_digits
+        else:
+            raise NotImplementedError(f"unknown `how_digit_embeddings` value: {self._how_digit_embeddings}")
+
+        # transformer layers
+        cfg_transformer_layer = {
+            "d_model":n_dim_transformer,
+            "nhead":self._n_head,
+            "dim_feedforward":n_dim_transformer*4,
+            "dropout":self._dropout
+        }
+        layer = nn.TransformerEncoderLayer(**cfg_transformer_layer)
+        self._transformer = nn.TransformerEncoder(layer, num_layers=self._n_layer)
+
+        # prediction layer
+        if self._time_distributed:
+            self._prediction_layer = nn.Linear(in_features=n_dim_transformer, out_features=self._n_ary, bias=True)
+        else:
+            lst_layers = [nn.Linear(in_features=n_dim_transformer, out_features=self._n_ary, bias=True) for _ in range(self._n_digits)]
+            self._prediction_layer = nn.ModuleList(lst_layers)
+
+    def init_bias_to_min(self):
+        warnings.warn(f"it doesn't affect anything.")
+
+    def init_bias_to_max(self):
+        warnings.warn(f"it doesn't affect anything.")
+
+    def _dtype_and_device(self, t: torch.Tensor):
+        return t.dtype, t.device
+
+    def forward(self, input_x: torch.Tensor, on_inference: bool = False):
+        dtype, device = self._dtype_and_device(input_x)
+
+        # input_x: (N_batch, N_dim_emb)
+        n_batch = input_x.shape[0]
+
+        # transformer layer inputs
+        # x_in: (N_batch, N_digits, N_dim_transformer)
+
+        ## entity embeddings
+        x_in_entity = input_x.unsqueeze(1).repeat(1, self._n_digits, 1)
+        ## digit embeddings
+        dummy_digits = torch.arange(self._n_digits, dtype=torch.long)
+        x_in_digits = self._embedding_digit.forward(dummy_digits).unsqueeze(0).repeat(n_batch,1,1)
+        ## merge two embeddings
+        if self._how_digit_embeddings == "add":
+            x_in = x_in_entity + x_in_digits
+        elif self._how_digit_embeddings == "concat":
+            x_in = torch.cat((x_in_entity, x_in_digits), dim=-1)
+        else:
+            raise NotImplementedError(f"unknown `how_digit_embeddings` value: {self._how_digit_embeddings}")
+
+        # transformer
+        # transformer's input shape must be (N_digits, N_batch, N_dim_transformer)
+        # h_out: (N_batch, N_digits, N_dim_transformer)
+        h_out = self._transformer.forward(x_in.transpose(1,0)).transpose(0,1)
+
+        # compute Pr{c_d}
+        # t_prob_c: (n_batch, n_digits, n_ary)
+        if self._time_distributed:
+            t_prob_c = F.softmax(self._prediction_layer(h_out), dim=-1)
+        else:
+            lst_prob_c = [F.softmax(layer(h_out[:,idx_d,:]), dim=-1) for idx_d, layer in enumerate(self._prediction_layer)]
+            t_prob_c = torch.stack(lst_prob_c, dim=1)
+
+        return t_prob_c
+
+    def calc_code_probability(self, input_x: torch.Tensor, adjust_code_probability: bool = False, **kwargs):
+        t_prob_c = self.forward(input_x, on_inference=True)
+        if adjust_code_probability:
+            t_prob_c = CodeValueMutualInformationLoss.calc_adjusted_code_probability(t_prob_c)
+
+        return t_prob_c
+
+    @property
+    def gate_open_ratio(self):
+        return None
+
+    @gate_open_ratio.setter
+    def gate_open_ratio(self, value):
+        pass
