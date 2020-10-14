@@ -245,6 +245,7 @@ class CodeLengthAwareEncoder(SimpleEncoder):
     def use_built_in_discretizer(self):
         return False
 
+
 class AutoRegressiveLSTMEncoder(SimpleEncoder):
 
     def __init__(self, n_dim_emb: int, n_digits: int, n_ary: int,
@@ -280,6 +281,9 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
         elif self._input_transformation == "time_dependent":
             lst_layers = [nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden, bias=True) for _ in range(self._n_digits)]
             self._x_to_h = nn.ModuleList(lst_layers)
+        elif self._input_transformation == "none":
+            assert self._n_dim_hidden == self._n_dim_emb, f"when you specify `input_transformation=none`, hidden dimension size must be consistent with embeddings dimension."
+            self._x_to_h = nn.Identity()
         else:
             print(f"unknown `input_transformation` value: {self._input_transformation}")
 
@@ -321,9 +325,11 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
         # v_h: (n_batch, n_dim_hidden)
         if self._input_transformation == "time_distributed":
             t_h = torch.tanh(self._x_to_h(input_x))
+        elif self._input_transformation == "none":
+            t_h = self._x_to_h(input_x)
 
         for d in range(self._n_digits):
-            if self._input_transformation == "time_distributed":
+            if self._input_transformation in ("time_distributed", "none"):
                 t_h_d = t_h
             elif self._input_transformation == "time_dependent":
                 x_to_h_d = self._x_to_h[d]
