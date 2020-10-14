@@ -487,7 +487,7 @@ class TransformerEncoder(SimpleEncoder):
         ## entity embeddings
         x_in_entity = input_x.unsqueeze(1).repeat(1, self._n_digits, 1)
         ## digit embeddings
-        dummy_digits = torch.arange(self._n_digits, dtype=torch.long)
+        dummy_digits = torch.arange(self._n_digits, dtype=torch.long, device=device)
         x_in_digits = self._embedding_digit.forward(dummy_digits).unsqueeze(0).repeat(n_batch,1,1)
         ## merge two embeddings
         if self._how_digit_embeddings == "add":
