@@ -201,7 +201,7 @@ class UnsupervisedTrainer(pl.LightningModule):
             _ = self._model.to(device=device)
 
     @classmethod
-    def load_model_from_checkpoint(self, weights_path: str, on_gpu: bool, map_location=None):
+    def load_model_from_checkpoint(cls, weights_path: str, on_gpu: bool, map_location=None, fix_model_missing_attributes: bool = True):
         if on_gpu:
             if map_location is not None:
                 checkpoint = torch.load(weights_path, map_location=map_location)
@@ -215,6 +215,24 @@ class UnsupervisedTrainer(pl.LightningModule):
             model = model.cuda(device=map_location)
         state_dict = {key.replace("_model.", ""):param for key, param in checkpoint["state_dict"].items()}
         model.load_state_dict(state_dict)
+
+        # fix model attributes for backward compatibility.
+        if fix_model_missing_attributes:
+            model = cls.fix_missing_attributes(model)
+
+        return model
+
+    @classmethod
+    def fix_missing_attributes(cls, model):
+        # fix for #9f6ec90, #fbf51f8
+        if getattr(model._encoder, "internal_layer_class_type", None) is None:
+            if model._encoder.__class__.__name__ == "AutoRegressiveLSTMEncoder":
+                if not hasattr(model._encoder, "_input_transformation"):
+                    setattr(model._encoder, "_input_transformation", "time_distributed")
+            elif model._encoder.__class__.__name__ == "TransformerEncoder":
+                pass
+            else:
+                model._encoder._internal_layer_class_type = model._encoder.lst_h_to_z[0].__class__.__name__
 
         return model
 
