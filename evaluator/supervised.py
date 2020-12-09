@@ -18,6 +18,8 @@ from model.autoencoder import AutoEncoder
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report, f1_score, roc_auc_score
 from .hyponymy import HyponymyScoreBasedPredictor, EntailmentProbabilityBasedPredictor
 from scipy.stats import spearmanr, kendalltau
+from .supervised_base import convert_class_to_label, wbless_setup, bibless_setup
+
 
 class BaseEvaluator(object, metaclass=ABCMeta):
 
@@ -222,13 +224,15 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
         return ret
 
     def evaluate(self, hyponym_field_name: str = "hyponym",
-                hypernym_field_name: str = "hypernym",
-                class_label_field_name: str = "class",
-                embedding_field_name: str = "embedding",
-                category_field_name: str = "relation",
-                threshold_soft_hyponymy_score: float = 0.0,
-                evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
-                **kwargs_for_metric_function):
+                 hypernym_field_name: str = "hypernym",
+                 class_label_field_name: str = "class",
+                 embedding_field_name: str = "embedding",
+                 category_field_name: str = "relation",
+                 threshold_soft_hyponymy_score: float = 0.0,
+                 cross_validation: bool = True,
+                 evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
+                 kwargs_cv: Optional[Dict[str, Any]] = {},
+                 **kwargs_for_metric_function):
 
         predictor = self._hyponymy_predictor_class(threshold=threshold_soft_hyponymy_score)
         evaluator = self._default_evaluator if evaluator is None else evaluator
@@ -259,6 +263,15 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
                     dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
             except:
                 dict_ret[metric_name] = None
+
+        # cross-validation
+        if cross_validation:
+            lst_category_labels = np.fromiter(map(convert_class_to_label, lst_category), dtype=np.int)
+            metrics = wbless_setup(ground_truth_labels=lst_category_labels,
+                                predicted_score=np.array(lst_score),
+                                is_in_vocab=np.repeat(True, len(lst_category_labels)),
+                                **kwargs_cv)
+            dict_ret.update(metrics)
 
         return lst_gt, lst_pred, dict_ret
 
@@ -303,7 +316,9 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
                  embedding_field_name: str = "embedding",
                  category_field_name: str = "relation",
                  threshold_soft_hyponymy_score: float = 0.0,
+                 cross_validation: bool = True,
                  evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
+                 kwargs_cv: Optional[Dict[str, Any]] = {},
                  **kwargs_for_metric_function):
 
         evaluator = self._default_evaluator if evaluator is None else evaluator
@@ -312,16 +327,14 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
         # do prediction
         dict_inference_functions = {
             "predicted_class": lambda mat_hyper, mat_hypo: predictor.predict_hyponymy_relation(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo),
-            "predicted_score": lambda mat_hyper, mat_hypo: max(
-                predictor.infer_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo),
-                predictor.infer_score(mat_code_prob_x=mat_hypo, mat_code_prob_y=mat_hyper)
-                )
+            "predicted_score_forward": lambda mat_hyper, mat_hypo: predictor.infer_score(mat_code_prob_x=mat_hyper, mat_code_prob_y=mat_hypo),
+            "predicted_score_reverse": lambda mat_hyper, mat_hypo: predictor.infer_score(mat_code_prob_x=mat_hypo, mat_code_prob_y=mat_hyper)
         }
         dict_inference = self._inference(dict_inference_functions,
                                          hypernym_field_name=hypernym_field_name, hyponym_field_name=hyponym_field_name,
                                          embedding_field_name=embedding_field_name)
         lst_pred = dict_inference["predicted_class"]
-        lst_score = dict_inference["predicted_score"]
+        lst_score_binary = np.maximum(dict_inference["predicted_score_forward"], dict_inference["predicted_score_reverse"])
 
         lst_gt = self._get_specific_field_values(target_field_name=class_label_field_name)
         lst_gt_binary = [gt in ("hyponymy", "reverse-hyponymy") for gt in lst_gt]
@@ -334,11 +347,21 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
                 if metric_name == "accuracy_by_category":
                     dict_ret[metric_name] = f_metric(lst_gt, lst_pred, lst_category, **kwargs_for_metric_function)
                 elif metric_name in ("area_under_curve", "optimal_threshold"):
-                    dict_ret[metric_name] = f_metric(lst_gt_binary, lst_score)
+                    dict_ret[metric_name] = f_metric(lst_gt_binary, lst_score_binary)
                 else:
                     dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
             except:
                 dict_ret[metric_name] = None
+
+        # cross-validation
+        if cross_validation:
+            lst_category_labels = np.fromiter(map(convert_class_to_label, lst_category), dtype=np.int)
+            metrics = bibless_setup(ground_truth_labels=lst_category_labels,
+                                predicted_score_forward=np.array(dict_inference["predicted_score_forward"]),
+                                predicted_score_reverse=np.array(dict_inference["predicted_score_reverse"]),
+                                is_in_vocab=np.repeat(True, len(lst_category_labels)),
+                                **kwargs_cv)
+            dict_ret.update(metrics)
 
         return lst_gt, lst_pred, dict_ret
 
