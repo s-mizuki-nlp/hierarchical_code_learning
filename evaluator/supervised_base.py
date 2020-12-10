@@ -40,13 +40,24 @@ def wbless_setup(ground_truth_labels: np.ndarray, predicted_score: np.ndarray, i
     h = predicted_score[is_in_vocab]
     y = ground_truth_labels[is_in_vocab]
 
+    n_sample = len(y)
+    n_val_sample = int(np.ceil(n_sample*VAL_PROB))
+
     val_scores = []
     test_scores = []
     thresholds = []
 
     for _ in range(NUM_TRIALS):
         # Generate a new mask every time
-        m_val = rng.rand(len(y)) < VAL_PROB
+        ## m_val = rng.rand(len(y)) < VAL_PROB
+
+        m_val = np.repeat(False, n_sample)
+        val_args = rng.choice(n_sample, size=n_val_sample, replace=False)
+        m_val[val_args] = True
+
+        assert len(m_val) == n_sample
+        assert sum(m_val) == n_val_sample
+
         # Test is everything except val
         m_test = ~m_val
         _, _, t = precision_recall_curve(y[m_val], h[m_val])
@@ -107,12 +118,22 @@ def bibless_setup(ground_truth_labels: np.ndarray,
 
     dir_pred = 2 * np.float32(h_forward >= h_reverse) - 1
 
+    n_sample = len(y)
+    n_val_sample = int(np.ceil(n_sample*VAL_PROB))
+
     val_scores = []
     test_scores = []
     thresholds = []
     for _ in range(NUM_TRIALS):
         # Generate a new mask every time
-        m_val = rng.rand(len(y)) < VAL_PROB
+        ## m_val = rng.rand(len(y)) < VAL_PROB
+        m_val = np.repeat(False, n_sample)
+        val_args = rng.choice(n_sample, size=n_val_sample, replace=False)
+        m_val[val_args] = True
+
+        assert len(m_val) == n_sample
+        assert sum(m_val) == n_val_sample
+
         # Test is everything except val
         m_test = ~m_val
 
