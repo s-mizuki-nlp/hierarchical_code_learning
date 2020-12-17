@@ -2,6 +2,7 @@
 # -*- coding:utf-8 -*-
 
 from typing import List, Optional, Dict
+from collections import defaultdict
 import numpy as np
 from sklearn.metrics import precision_recall_curve
 
@@ -18,6 +19,7 @@ def convert_class_to_label(ground_truth_class: str) -> int:
 
 # source: https://github.com/facebookresearch/hypernymysuite/blob/master/hypernymysuite/evaluation.py
 def wbless_setup(ground_truth_labels: np.ndarray, predicted_score: np.ndarray, is_in_vocab: np.ndarray,
+                 optional_attributes: Optional[Dict[str, np.ndarray]] = {},
                  validation_ratio: Optional[float] = 0.02, n_trials: Optional[int] = 1000, random_seed: Optional[int] = 42,
                  **kwargs):
     """
@@ -26,6 +28,7 @@ def wbless_setup(ground_truth_labels: np.ndarray, predicted_score: np.ndarray, i
     @param ground_truth_labels: array of binary labels. 1:hyponymy, 0:other
     @param predicted_score: predicted hyponymy propensity score. larger tend to be hyponymy.
     @param is_in_vocab: array of True/False flags. True:in-vocbulary, False:out-of-vocabulary.
+    @param optional_attributes: dict of the array of optional attributes (i.e. ground-truth label). Array size must be identical to the sample size.
     @param validation_ratio: ratio of the validation data. DEFAULT:0.02
     @param n_trials: number of iteration of evaluation. DEFAULT:1000
     @return: average of metrics; validation accuracy, test accuracy, and optimal threshold.
@@ -46,6 +49,7 @@ def wbless_setup(ground_truth_labels: np.ndarray, predicted_score: np.ndarray, i
     val_scores = []
     test_scores = []
     thresholds = []
+    dict_optional_test_scores = defaultdict(list)
 
     for _ in range(NUM_TRIALS):
         # Generate a new mask every time
@@ -67,11 +71,24 @@ def wbless_setup(ground_truth_labels: np.ndarray, predicted_score: np.ndarray, i
         preds_val = h[m_val] >= best_t
         preds_test = h[m_test] >= best_t
         # Evaluate
-        val_scores.append(np.mean(preds_val == y[m_val]))
-        test_scores.append(np.mean(preds_test == y[m_test]))
+        vec_is_val_correct = preds_val == y[m_val]
+        vec_is_test_correct = preds_test == y[m_test]
+        val_scores.append(np.mean(vec_is_val_correct))
+        test_scores.append(np.mean(vec_is_test_correct))
         thresholds.append(best_t)
         # sanity check
         assert np.allclose(val_scores[-1], thr_accs.max())
+
+        # test accuracy for optional attributes (i.e. ground-truth label)
+        for attr_name, vec_attributes in optional_attributes.items():
+            for attr_value in np.unique(vec_attributes):
+                metric_name = f"cv_test_accuracy_{attr_name}-{attr_value}"
+                mask_test_attr_v = vec_attributes[m_test] == attr_value
+                if sum(mask_test_attr_v) > 0:
+                    test_score_attr_v = np.mean(vec_is_test_correct[mask_test_attr_v])
+                else:
+                    test_score_attr_v = None
+                dict_optional_test_scores[metric_name].append(test_score_attr_v)
 
     # report average across many folds
     dict_results = {
@@ -79,6 +96,10 @@ def wbless_setup(ground_truth_labels: np.ndarray, predicted_score: np.ndarray, i
         "cv_test_accuracy": np.mean(test_scores),
         "cv_optimal_threshold": np.mean(thresholds)
     }
+    # report optional accuracy across meny folds
+    if len(optional_attributes) > 0:
+        dict_optional_results = {metric_name:np.nanmean(lst_test_scores) for metric_name, lst_test_scores in dict_optional_test_scores.items()}
+        dict_results.update(dict_optional_results)
 
     return dict_results
 
@@ -87,6 +108,7 @@ def wbless_setup(ground_truth_labels: np.ndarray, predicted_score: np.ndarray, i
 def bibless_setup(ground_truth_labels: np.ndarray,
                   predicted_score_forward: np.ndarray, predicted_score_reverse: np.ndarray,
                   is_in_vocab: np.ndarray,
+                  optional_attributes: Optional[Dict[str, np.ndarray]] = {},
                   validation_ratio: Optional[float] = 0.02, n_trials: Optional[int] = 1000, random_seed: Optional[int] = 42,
                   **kwargs) -> Dict[str, float]:
     """
@@ -96,6 +118,7 @@ def bibless_setup(ground_truth_labels: np.ndarray,
     @param predicted_score_forward: predicted hyponymy propensity score of (hyponymy, hypernymy) tuple.
     @param predicted_score_reverse: predicted hyponymy propensity score of (hypernymy, hyponymy) tuple.
     @param is_in_vocab: array of True/False flags. True:in-vocbulary, False:out-of-vocabulary.
+    @param optional_attributes: dict of the array of optional attributes (i.e. ground-truth labels). Array size must be identical to the sample size.
     @param validation_ratio: ratio of the validation data. DEFAULT:0.02
     @param n_trials: number of iteration of evaluation. DEFAULT:1000
     @return: average of metrics; validation accuracy, test accuracy, and optimal threshold.
@@ -124,6 +147,8 @@ def bibless_setup(ground_truth_labels: np.ndarray,
     val_scores = []
     test_scores = []
     thresholds = []
+    dict_optional_test_scores = defaultdict(list)
+
     for _ in range(NUM_TRIALS):
         # Generate a new mask every time
         ## m_val = rng.rand(len(y)) < VAL_PROB
@@ -148,9 +173,24 @@ def bibless_setup(ground_truth_labels: np.ndarray,
         fin_preds_val = det_preds_val * dir_pred[m_val]
         fin_preds_test = det_preds_test * dir_pred[m_test]
 
-        val_scores.append(np.mean(fin_preds_val == y[m_val]))
-        test_scores.append(np.mean(fin_preds_test == y[m_test]))
+        # evaluate
+        vec_is_val_correct = fin_preds_val == y[m_val]
+        vec_is_test_correct = fin_preds_test == y[m_test]
+
+        val_scores.append(np.mean(vec_is_val_correct))
+        test_scores.append(np.mean(vec_is_test_correct))
         thresholds.append(best_t)
+
+        # test accuracy for optional attributes (i.e. ground-truth label)
+        for attr_name, vec_attributes in optional_attributes.items():
+            for attr_value in np.unique(vec_attributes):
+                metric_name = f"cv_test_accuracy_{attr_name}-{attr_value}"
+                mask_test_attr_v = vec_attributes[m_test] == attr_value
+                if sum(mask_test_attr_v) > 0:
+                    test_score_attr_v = np.mean(vec_is_test_correct[mask_test_attr_v])
+                else:
+                    test_score_attr_v = None
+                dict_optional_test_scores[metric_name].append(test_score_attr_v)
 
     # report average across many folds
     dict_results = {
@@ -158,5 +198,9 @@ def bibless_setup(ground_truth_labels: np.ndarray,
         "cv_test_accuracy": np.mean(test_scores),
         "cv_optimal_threshold": np.mean(thresholds)
     }
+    # report optional accuracy across meny folds
+    if len(optional_attributes) > 0:
+        dict_optional_results = {metric_name:np.nanmean(lst_test_scores) for metric_name, lst_test_scores in dict_optional_test_scores.items()}
+        dict_results.update(dict_optional_results)
 
     return dict_results
