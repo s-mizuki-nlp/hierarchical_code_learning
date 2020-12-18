@@ -228,6 +228,7 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
                  class_label_field_name: str = "class",
                  embedding_field_name: str = "embedding",
                  category_field_name: str = "relation",
+                 cv_optional_attribute_field_names: List[str] = [],
                  threshold_soft_hyponymy_score: float = 0.0,
                  cross_validation: bool = True,
                  evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
@@ -267,9 +268,14 @@ class BinaryHyponymyClassificationEvaluator(BaseEvaluator):
         # cross-validation
         if cross_validation:
             lst_category_labels = np.fromiter(map(convert_class_to_label, lst_category), dtype=np.int)
+            # optional attributes (i.e. ground-truth label, hyponymy score
+            optional_attributes = {}
+            for attr_name in cv_optional_attribute_field_names + [category_field_name]:
+                optional_attributes[attr_name] = np.array(self._get_specific_field_values(target_field_name=attr_name))
             metrics = wbless_setup(ground_truth_labels=lst_category_labels,
                                 predicted_score=np.array(lst_score),
                                 is_in_vocab=np.repeat(True, len(lst_category_labels)),
+                                optional_attributes=optional_attributes,
                                 **kwargs_cv)
             dict_ret.update(metrics)
 
@@ -315,6 +321,7 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
                  class_label_field_name: str = "class",
                  embedding_field_name: str = "embedding",
                  category_field_name: str = "relation",
+                 cv_optional_attribute_field_names: List[str] = [],
                  threshold_soft_hyponymy_score: float = 0.0,
                  cross_validation: bool = True,
                  evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
@@ -356,10 +363,15 @@ class MultiClassHyponymyClassificationEvaluator(BaseEvaluator):
         # cross-validation
         if cross_validation:
             lst_category_labels = np.fromiter(map(convert_class_to_label, lst_category), dtype=np.int)
+            # optional attributes (i.e. ground-truth label, hyponymy score
+            optional_attributes = {}
+            for attr_name in cv_optional_attribute_field_names + [category_field_name]:
+                optional_attributes[attr_name] = np.array(self._get_specific_field_values(target_field_name=attr_name))
             metrics = bibless_setup(ground_truth_labels=lst_category_labels,
                                 predicted_score_forward=np.array(dict_inference["predicted_score_forward"]),
                                 predicted_score_reverse=np.array(dict_inference["predicted_score_reverse"]),
                                 is_in_vocab=np.repeat(True, len(lst_category_labels)),
+                                optional_attributes=optional_attributes,
                                 **kwargs_cv)
             dict_ret.update(metrics)
 
