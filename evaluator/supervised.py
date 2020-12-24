@@ -402,6 +402,7 @@ class GradedLexicalEntailmentEvaluator(BaseEvaluator):
                  hypernym_field_name: str = "hypernym",
                  rating_field_name: str = "rating",
                  embedding_field_name: str = "embedding",
+                 relation_field_name: str = "relation",
                  evaluator: Optional[Dict[str, Callable[[Iterable, Iterable],Any]]] = None,
                  **kwargs_for_metric_function):
 
@@ -420,7 +421,7 @@ class GradedLexicalEntailmentEvaluator(BaseEvaluator):
         # get ground-truth rating
         lst_gt = self._get_specific_field_values(target_field_name=rating_field_name)
         # get ground-truth tuple: (hypernym, hyponym, rating)
-        g = map(self._get_specific_field_values, (hypernym_field_name, hyponym_field_name, rating_field_name))
+        g = map(self._get_specific_field_values, (hypernym_field_name, hyponym_field_name, rating_field_name, relation_field_name))
         lst_tup_gt = list(zip(*g))
 
         # calculate metrics
@@ -430,5 +431,19 @@ class GradedLexicalEntailmentEvaluator(BaseEvaluator):
                 dict_ret[metric_name] = f_metric(lst_gt, lst_pred, **kwargs_for_metric_function)
             except:
                 dict_ret[metric_name] = None
+
+        # calculate mean and median of the graded lexical entailment score for each distinct value of optional attributes
+        dict_score_statistics = {}
+        dict_stat_functions = {"mean":np.mean, "median":np.median}
+        for attr_name in [relation_field_name]:
+            vec_attributes = np.array(self._get_specific_field_values(target_field_name=attr_name))
+            for attr_value in np.unique(vec_attributes):
+                for stat_name, stat_function in dict_stat_functions.items():
+                    v_pred = stat_function(np.array(lst_pred)[vec_attributes == attr_value])
+                    dict_score_statistics[f"score_pred_{attr_name}-{attr_value}-{stat_name}"] = v_pred
+                    v_gt = stat_function(np.array(lst_gt)[vec_attributes == attr_value])
+                    dict_score_statistics[f"score_gt_{attr_name}-{attr_value}-{stat_name}"] = v_gt
+
+        dict_ret.update(dict_score_statistics)
 
         return lst_tup_gt, lst_pred, dict_ret
