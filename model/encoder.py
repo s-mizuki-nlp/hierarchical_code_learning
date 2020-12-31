@@ -6,7 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 import warnings
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 import copy
 import inspect
 import torch
@@ -255,6 +255,7 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
                  detach_previous_output: bool = False,
                  time_distributed: bool = True,
                  input_tranformation: str = "time_distributed",
+                 prob_zero_monotone_increasing: bool = False,
                  dtype=torch.float32,
                  **kwargs):
 
@@ -272,6 +273,7 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
         self._time_distributed = time_distributed
         self._detach_previous_output = detach_previous_output
         self._input_transformation = input_tranformation
+        self._prob_zero_monotone_increasing = prob_zero_monotone_increasing
 
         self._build()
 
@@ -313,6 +315,30 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
 
         return h_t, c_t, e_t
 
+    def _adjust_code_probability_to_monotone_increasing(self, probs: torch.Tensor, probs_prev: Union[None, torch.Tensor]):
+        # if Pr{C_{d-1}} is not given, we don't adjust the probability.
+        if probs_prev is None:
+            return probs
+
+        dtype, device = self._dtype_and_device(probs)
+        n_ary = self._n_ary
+
+        # adjust Pr{Cd=0} using stick-breaking process
+        # probs_zero_*: (n_batch, n_digits, 1)
+        probs_zero = torch.index_select(probs, dim=-1, index=torch.tensor(0, device=device))
+        probs_zero_prev = torch.index_select(probs_prev, dim=-1, index=torch.tensor(0, device=device))
+        probs_zero_adj = probs_zero_prev + (1.0 - probs_zero_prev)*probs_zero
+
+        # probs_nonzero_*: (n_batch, n_digits, n_ary-1)
+        probs_nonzero = torch.index_select(probs, dim=-1, index=torch.arange(1, n_ary, dtype=torch.long, device=device))
+        adjust_factor = (1.0 - probs_zero_adj) / ((1.0 - probs_zero) + 1E-6)
+        probs_nonzero_adj = adjust_factor * probs_nonzero
+
+        # concatenate adjusted probabilities
+        probs_adj = torch.cat((probs_zero_adj, probs_nonzero_adj), dim=-1)
+
+        return probs_adj
+
     def forward(self, input_x: torch.Tensor, on_inference: bool = False):
         dtype, device = self._dtype_and_device(input_x)
         n_batch = input_x.shape[0]
@@ -345,6 +371,11 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
                 t_z_d_dash = self._lst_h_to_z[d](h_d)
             t_z_d = torch.log(F.softplus(t_z_d_dash) + 1E-6)
             t_prob_c_d = F.softmax(t_z_d, dim=-1)
+
+            # adjust Pr{c_d=d|c_{<d}} so that Pr{c_d=0|c_{<d+1}} satisfies monotone increasing condition.
+            if self._prob_zero_monotone_increasing:
+                prob_c_prev = lst_prob_c[-1] if len(lst_prob_c) > 0 else None
+                t_prob_c_d = self._adjust_code_probability_to_monotone_increasing(probs=t_prob_c_d, probs_prev=prob_c_prev)
 
             # branch on training or on inference
 
