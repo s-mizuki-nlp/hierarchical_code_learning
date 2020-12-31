@@ -224,11 +224,13 @@ class UnsupervisedTrainer(pl.LightningModule):
 
     @classmethod
     def fix_missing_attributes(cls, model):
-        # fix for #9f6ec90, #fbf51f8
+        # fix for #9f6ec90, #fbf51f8, #d882d6f
         if getattr(model._encoder, "internal_layer_class_type", None) is None:
             if model._encoder.__class__.__name__ == "AutoRegressiveLSTMEncoder":
                 if not hasattr(model._encoder, "_input_transformation"):
                     setattr(model._encoder, "_input_transformation", "time_distributed")
+                if not hasattr(model._encoder, "_prob_zero_monotone_increasing"):
+                    setattr(model._encoder, "_prob_zero_monotone_increasing", False)
             elif model._encoder.__class__.__name__ == "TransformerEncoder":
                 pass
             else:
