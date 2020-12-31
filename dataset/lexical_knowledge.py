@@ -185,7 +185,8 @@ class HyponymyDataset(Dataset):
             "path": self.path,
             "n_sample": self.__len__(),
             "description": self.description,
-            "transform": self.transform
+            "transform": self.transform,
+            "filter": self.filter
         }
         return ret
 

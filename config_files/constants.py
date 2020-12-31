@@ -39,3 +39,17 @@ thing.n.08
 
 SYNSETS_DEPTH_UP_TO_THIRD_LEVEL = list(filter(bool, map(lambda s: s.strip(), _str_synsets_up_to_third_level.split("\n"))))
 SYNSETS_DEPTH_UP_TO_SECOND_LEVEL = list(filter(bool, map(lambda s: s.strip(), _str_synsets_up_to_second_level.split("\n"))))
+
+_str_hyperlex_hyponymy_synonymy_relations = """
+syn
+hyp-1
+hyp-2
+hyp-3
+hyp-4
+r-hyp-1
+r-hyp-2
+r-hyp-3
+r-hyp-4
+"""
+
+HYPERLEX_HYPONYMY_SYNONYMY_RELATIONS = list(filter(bool, map(lambda s: s.strip(), _str_hyperlex_hyponymy_synonymy_relations.split("\n"))))

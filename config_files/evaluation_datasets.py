@@ -7,6 +7,8 @@ from __future__ import print_function
 
 import os
 from dataset.transform import FieldTypeConverter
+from dataset.filter import DictionaryFilter
+from .constants import HYPERLEX_HYPONYMY_SYNONYMY_RELATIONS
 
 DIR_EVALSET = "/home/sakae/Windows/dataset/hypernym_detection/evalset_nguyen_2017/"
 
@@ -102,6 +104,11 @@ cfg_evaluation_datasets_classification = {
 }
 
 # graded lexical entailment task
+
+## custom filters
+_include_noun = DictionaryFilter(includes={"pos-tag":{"N"}})
+_include_hyponymy_and_synonymy = DictionaryFilter(includes={"relation":set(HYPERLEX_HYPONYMY_SYNONYMY_RELATIONS)})
+
 cfg_evaluation_datasets_graded_le = {
     "HyperLex": {
         "path": os.path.join(DIR_EVALSET, "graded_lexical_entailment/hyperlex-all.txt"),
@@ -110,6 +117,24 @@ cfg_evaluation_datasets_graded_le = {
         "transform":_rating_str_to_float,
         "columns": {"hyponym":0, "hypernym":1, "pos-tag":2, "relation": 3, "rating": 4},
         "description": "HyperLex dataset: graded lexical entailment",
+    },
+    "HyperLex-noun": {
+        "path": os.path.join(DIR_EVALSET, "graded_lexical_entailment/hyperlex-all.txt"),
+        "header": True,
+        "delimiter": " ",
+        "transform":_rating_str_to_float,
+        "filter":_include_noun,
+        "columns": {"hyponym":0, "hypernym":1, "pos-tag":2, "relation": 3, "rating": 4},
+        "description": "HyperLex dataset: noun word pairs",
+    },
+    "HyperLex-hyponymy-synonymy": {
+        "path": os.path.join(DIR_EVALSET, "graded_lexical_entailment/hyperlex-all.txt"),
+        "header": True,
+        "delimiter": " ",
+        "transform":_rating_str_to_float,
+        "filter":_include_hyponymy_and_synonymy,
+        "columns": {"hyponym":0, "hypernym":1, "pos-tag":2, "relation": 3, "rating": 4},
+        "description": "HyperLex dataset: hyponymy, reverse-hyponymy, and synonymy relation word pairs",
     }
 }
 
