@@ -7,6 +7,7 @@ from __future__ import print_function
 
 from abc import ABCMeta, abstractmethod
 import numpy as np
+import torch
 
 class BaseScheduler(object, metaclass=ABCMeta):
 
@@ -112,3 +113,11 @@ class PeriodicScheduler(BaseScheduler):
         else:
             y = self._off
         return y
+
+def reset_model_weights(model: torch.nn.Module):
+    for model_child in model.children():
+        reset_model_weights(model_child)
+
+    reset_parameters = getattr(model, "reset_parameters", None)
+    if callable(reset_parameters):
+        model.reset_parameters()
