@@ -255,6 +255,7 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
                  detach_previous_output: bool = False,
                  time_distributed: bool = True,
                  input_tranformation: str = "time_distributed",
+                 output_embedding: str = "time_distributed",
                  prob_zero_monotone_increasing: bool = False,
                  dtype=torch.float32,
                  **kwargs):
@@ -273,29 +274,41 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
         self._time_distributed = time_distributed
         self._detach_previous_output = detach_previous_output
         self._input_transformation = input_tranformation
+        self._output_embedding = output_embedding
         self._prob_zero_monotone_increasing = prob_zero_monotone_increasing
 
         self._build()
 
     def _build(self):
-        if self._input_transformation == "time_distributed":
+
+        # x -> i_t
+        if self._input_transformation == "time_distributed": # i_t = FF(x;\theta)
             self._x_to_h = nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden)
-        elif self._input_transformation == "time_dependent":
+        elif self._input_transformation == "time_dependent": # i_t = FF(x;\theta_t)
             lst_layers = [nn.Linear(in_features=self._n_dim_emb, out_features=self._n_dim_hidden, bias=True) for _ in range(self._n_digits)]
             self._x_to_h = nn.ModuleList(lst_layers)
-        elif self._input_transformation == "none":
+        elif self._input_transformation == "none": # i_t = x
             assert self._n_dim_hidden == self._n_dim_emb, f"when you specify `input_transformation=none`, hidden dimension size must be consistent with embeddings dimension."
             self._x_to_h = nn.Identity()
         else:
             print(f"unknown `input_transformation` value: {self._input_transformation}")
 
+        # (i_t,e_t,h_t) -> h_t
         self._lstm_cell = nn.LSTMCell(input_size=self._n_dim_hidden+self._n_dim_emb_code, hidden_size=self._n_dim_hidden, bias=True)
-        self._embedding_code = nn.Linear(in_features=self._n_ary, out_features=self._n_dim_emb_code, bias=False)
+
+        # o_t -> e_{t+1}; t=0,1,...,N_d-2
+        if self._output_embedding == "time_distributed": # e_t = Embed(o_t;\theta)
+            self._embedding_code = nn.Linear(in_features=self._n_ary, out_features=self._n_dim_emb_code, bias=False)
+        elif self._output_embedding == "time_dependent": # e_t = Embed(o_t;\theta_t)
+            lst_layers = [nn.Linear(in_features=self._n_ary, out_features=self._n_dim_emb_code, bias=False) for _ in range(self._n_digits-1)]
+            self._embedding_code = nn.ModuleList(lst_layers)
+        else:
+            print(f"unknown `input_transformation` value: {self._input_transformation}")
 
         # h_t -> z_t
-        if self._time_distributed:
+        if self._time_distributed: # z_t = FF(h_t;\theta)
             self._lst_h_to_z = nn.Linear(in_features=self._n_dim_hidden, out_features=self._n_ary, bias=True)
-        else:
+        else: # z_t = FF(h_t;\theta_t)
             lst_layers = [nn.Linear(in_features=self._n_dim_hidden, out_features=self._n_ary, bias=True) for _ in range(self._n_digits)]
             self._lst_h_to_z = nn.ModuleList(lst_layers)
 
@@ -392,10 +405,19 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
                     t_latent_code_d = t_prob_c_d
 
             # compute the embedding of previous code
-            if self._detach_previous_output:
-                e_d = self._embedding_code(t_latent_code_d.detach())
+            if d != (self._n_digits - 1):
+                if self._detach_previous_output:
+                    o_d = t_latent_code_d.detach()
+                else:
+                    o_d = t_latent_code_d
+                if self._output_embedding == "time_distributed":
+                    e_d = self._embedding_code(o_d)
+                elif self._output_embedding == "time_dependent":
+                    e_d = self._embedding_code[d](o_d)
+                else:
+                    e_d = None
             else:
-                e_d = self._embedding_code(t_latent_code_d)
+                e_d = None
 
             # store computed results
             lst_prob_c.append(t_prob_c_d)
