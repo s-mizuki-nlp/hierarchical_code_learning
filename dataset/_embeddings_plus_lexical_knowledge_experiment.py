@@ -21,6 +21,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
                  exclude_reverse_hyponymy_from_non_hyponymy_relation: bool = True,
                  swap_hyponymy_relations: bool = False,
                  limit_hyponym_candidates_within_minibatch: bool = False,
+                 in_batch_negative_nearest_neighbor_sampling: bool = False,
                  negative_sampling_from_nearest_neighbors: Optional[float] = None,
                  kwargs_nearest_neighbor_search: Optional[Dict[str,Any]] = None,
                  verbose: bool = False, **kwargs_hyponymy_dataloader):
@@ -38,13 +39,14 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
         # value of the negative sampling from nearest neighbors option.
         if negative_sampling_from_nearest_neighbors is not None:
+            assert in_batch_negative_nearest_neighbor_sampling == False, "you can't enable `in_batch_negative_nearest_neighbor_sampling` simultaneously."
             assert isinstance(negative_sampling_from_nearest_neighbors, float), "`negative_sampling_from_nearest_neighbors` must be float."
             assert 0 <= negative_sampling_from_nearest_neighbors <= 1, "`negative_sampling_from_nearest_neighbors` must be within the range of [0,1]."
             assert kwargs_nearest_neighbor_search is not None, "you must specify `kwargs_nearest_neighbor_search` argument. it includes either `top_k` or `top_q` parameter."
 
         # Make sure the relation between the number of positive examples, negative examples, and embedding batch sizes.
         assert non_hyponymy_batch_size % hyponymy_batch_size == 0, f"`non_hyponymy_batch_size` must be a multiple of `hyponymy_batch_size`."
-        if not limit_hyponym_candidates_within_minibatch:
+        if not (limit_hyponym_candidates_within_minibatch or in_batch_negative_nearest_neighbor_sampling):
             assert embedding_batch_size >= 2*hyponymy_batch_size + non_hyponymy_batch_size, \
             f"`embedding_batch_size` must be larger than `2*hyponymy_batch_size + non_hyponymy_batch_size`."
 
@@ -92,6 +94,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         self._limit_hyponym_candidates_within_minibatch = limit_hyponym_candidates_within_minibatch
         self._swap_hyponymy_relations = swap_hyponymy_relations
         self._negative_sampling_from_nearest_neighbors = negative_sampling_from_nearest_neighbors
+        self._in_batch_negative_nearest_neighbor_sampling = in_batch_negative_nearest_neighbor_sampling
         self._verbose = verbose
 
         if verbose:
@@ -109,7 +112,7 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
 
         coef_effective_samples = 1 - 1/np.e
         n_iteration = n_hyponymy / self._hyponymy_batch_size
-        if self._limit_hyponym_candidates_within_minibatch:
+        if (self._limit_hyponym_candidates_within_minibatch or self._in_batch_negative_nearest_neighbor_sampling):
             n_embeddings_sample_in_batch = self._embedding_batch_size - 2*self._hyponymy_batch_size
             multiplier = 2
         else:
@@ -131,6 +134,80 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         print(f"balanced `embedding_batch_size` value: {balanced_embedding_batch_size:.0f}")
         print(f"balanced `hyponymy_batch_size` value: {balanced_hyponymy_batch_size:.0f}")
         print(f"balanced `non_hyponymy_batch_size value: {balanced_hyponymy_batch_size*self._non_hyponymy_multiple:.0f}")
+
+    def _calc_in_batch_nearest_neighbors(self, batch_hyponymy: List[Dict[str, Union[str,float]]]) -> Dict[str, List[str]]:
+
+        _EPS = 1E-7
+
+        # take tokens from hyponymy pairs
+        set_tokens = set()
+        iter_hyponyms = (hyponymy["hyponym"] for hyponymy in batch_hyponymy)
+        iter_hypernyms = (hyponymy["hypernym"] for hyponymy in batch_hyponymy)
+        set_tokens.update(iter_hyponyms)
+        set_tokens.update(iter_hypernyms)
+
+        # create temporary token-to-index mapping
+        lst_tokens = list(set_tokens)
+        index_to_token = {idx:token for idx, token in enumerate(lst_tokens)}
+
+        # create embeddings
+        embeddings = tuple(self._word_embeddings_dataset[token]["embedding"] for token in lst_tokens)
+        n_dim = self._word_embeddings_dataset.n_dim
+        mat_embeddings = np.concatenate(embeddings, axis=0).reshape(-1, n_dim)
+        ## normalize embeddings length
+        mat_embeddings = mat_embeddings / (np.linalg.norm(mat_embeddings, ord=2) + _EPS)
+
+        # calculate most similar entities
+        mat_similarity = mat_embeddings.dot(mat_embeddings.T)
+
+        dict_results = {}
+        for idx, token in enumerate(lst_tokens):
+            vec_similar_indices = np.argsort(-mat_similarity[idx])[1:]
+            dict_results[token] = list(map(index_to_token.get, vec_similar_indices))
+
+        return dict_results
+
+    def _create_non_hyponymy_samples_from_hyponymy_samples_using_in_batch_nearest_neighbors(self, batch_hyponymy: List[Dict[str,Union[str,float]]],
+                                                            size_per_sample: int) -> List[Dict[str,Union[str,float]]]:
+
+        # create non-hyponymy relation using in-batch nearest neighbors.
+        lst_non_hyponymy_samples = []
+        dict_in_batch_nearest_neighbors = self._calc_in_batch_nearest_neighbors(batch_hyponymy=batch_hyponymy)
+
+        for hyponymy in batch_hyponymy:
+            hyper = hyponymy["hypernym"]
+            hypo = hyponymy["hyponym"]
+            dist = hyponymy["distance"]
+            pos = hyponymy.get("pos", None)
+
+            # if the given pair is not hyponymy(<=>distance is less than or equal to 0.0), ignore it.
+            if dist <= 0.0:
+                continue
+
+            lst_tup_sample_b = []
+            if "hyponym" in self._non_hyponymy_relation_target:
+                lst_tup_sample_b_swap_hypo = []
+                for negative_hyponym in dict_in_batch_nearest_neighbors[hyper][:size_per_sample]:
+                    negative_example = (hyper, negative_hyponym, -1.0)
+                    lst_tup_sample_b_swap_hypo.append(negative_example)
+                lst_tup_sample_b.extend(lst_tup_sample_b_swap_hypo)
+
+            if "hypernym" in self._non_hyponymy_relation_target:
+                lst_tup_sample_b_swap_hyper = []
+                for negative_hypernym in dict_in_batch_nearest_neighbors[hypo][:size_per_sample]:
+                    negative_example = (negative_hypernym, hypo, -1.0)
+                    lst_tup_sample_b_swap_hyper.append(negative_example)
+                lst_tup_sample_b.extend(lst_tup_sample_b_swap_hyper)
+
+            # convert them to dictionary format
+            keys = ("hypernym", "hyponym", "distance")
+            lst_non_hyponymy_samples.extend([dict(zip(keys, values)) for values in lst_tup_sample_b])
+
+            if self._verbose:
+                if len(lst_tup_sample_b):
+                    f"failed to sample negative hyponyms and hypernyms: {hyper},{hypo}"
+
+        return lst_non_hyponymy_samples
 
     def _create_non_hyponymy_samples_from_hyponymy_samples(self, batch_hyponymy: List[Dict[str,Union[str,float]]],
                                                             size_per_sample: int) -> List[Dict[str,Union[str,float]]]:
@@ -282,8 +359,12 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             # we randomly sample the non-hyponymy relation from the mini-batch
             n_adjuster = len(self._non_hyponymy_relation_target)
             size_per_sample = self._non_hyponymy_multiple // n_adjuster
-            batch_non_hyponymy_b = self._create_non_hyponymy_samples_from_hyponymy_samples(batch_hyponymy=batch_hyponymy,
-                                                                                         size_per_sample=size_per_sample)
+            if self._in_batch_negative_nearest_neighbor_sampling:
+                batch_non_hyponymy_b = self._create_non_hyponymy_samples_from_hyponymy_samples_using_in_batch_nearest_neighbors(batch_hyponymy=batch_hyponymy,
+                                                                                             size_per_sample=size_per_sample)
+            else:
+                batch_non_hyponymy_b = self._create_non_hyponymy_samples_from_hyponymy_samples(batch_hyponymy=batch_hyponymy,
+                                                                                             size_per_sample=size_per_sample)
 
             # remove hyponymy pairs which is not encodable
             batch_non_hyponymy = [sample for sample in batch_non_hyponymy_b if self.is_encodable_all(sample["hyponym"], sample["hypernym"])]
@@ -312,8 +393,12 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
             # we randomly sample the non-hyponymy relation from the mini-batch
             n_adjuster = len(self._non_hyponymy_relation_target)
             size_per_sample = self._non_hyponymy_multiple // n_adjuster
-            batch_non_hyponymy = self._create_non_hyponymy_samples_from_hyponymy_samples(batch_hyponymy=batch_hyponymy,
+            if self._in_batch_negative_nearest_neighbor_sampling:
+                batch_non_hyponymy = self._create_non_hyponymy_samples_from_hyponymy_samples_using_in_batch_nearest_neighbors(batch_hyponymy=batch_hyponymy,
                                                                                          size_per_sample=size_per_sample)
+            else:
+                batch_non_hyponymy = self._create_non_hyponymy_samples_from_hyponymy_samples(batch_hyponymy=batch_hyponymy,
+                                                                                             size_per_sample=size_per_sample)
             batch_hyponymy.extend(batch_non_hyponymy)
 
             # (optional) create swapped samples
