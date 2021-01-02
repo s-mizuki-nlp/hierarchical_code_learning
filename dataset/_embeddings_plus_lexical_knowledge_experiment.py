@@ -2,6 +2,7 @@
 # -*- coding:utf-8 -*-
 
 from typing import List, Dict, Optional, Union, Any
+from collections import defaultdict
 import random
 
 from torch.utils.data import Dataset, DataLoader, Subset
@@ -145,6 +146,11 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         iter_hypernyms = (hyponymy["hypernym"] for hyponymy in batch_hyponymy)
         set_tokens.update(iter_hyponyms)
         set_tokens.update(iter_hypernyms)
+        dict_set_positive_entities = defaultdict(set)
+        for hyponymy in batch_hyponymy:
+            hyper, hypo = hyponymy["hypernym"], hyponymy["hyponym"]
+            dict_set_positive_entities[hyper].add(hypo)
+            dict_set_positive_entities[hypo].add(hyper)
 
         # create temporary token-to-index mapping
         lst_tokens = list(set_tokens)
@@ -161,9 +167,11 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         mat_similarity = mat_embeddings.dot(mat_embeddings.T)
 
         dict_results = {}
-        for idx, token in enumerate(lst_tokens):
+        for idx, entity in enumerate(lst_tokens):
             vec_similar_indices = np.argsort(-mat_similarity[idx])[1:]
-            dict_results[token] = list(map(index_to_token.get, vec_similar_indices))
+            lst_nearest_neighbors = list(map(index_to_token.get, vec_similar_indices))
+            # remove postitive token pairs
+            dict_results[entity] = [t for t in lst_nearest_neighbors if t not in dict_set_positive_entities[entity]]
 
         return dict_results
 
