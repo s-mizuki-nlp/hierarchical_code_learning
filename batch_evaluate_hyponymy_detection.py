@@ -27,6 +27,7 @@ def _parse_args():
     parser.add_argument("--output_summary", "-o", required=True, type=str, help="path of the summary output file.")
     parser.add_argument("--output_notebook", required=True, type=str, help="path of the jupyter notebook file. You can include parameter variables such as {version_no}")
     parser.add_argument("--version_no", "-v", required=True, type=str, help="version numbers to be evaluated. ex: '28,29:31,33'")
+    parser.add_argument("--checkpoint_directory", required=True, type=str, help="path of the pytorch lightning checkpoint root directory. ex: ./saved_model/lightning_logs/")
     parser.add_argument("--evaluation_arguments", required=False, type=str, default="{}", help="optional evaluation parameters. ex: '{\"cross_validation\":True}'")
     parser.add_argument("--verbose", action="store_true", help="output verbose.")
 
@@ -57,7 +58,8 @@ def main():
         evaluation_parameters = {
             "version_no":version_no,
             "path_output_batch_execution":args.output_summary,
-            "batch_execution":True
+            "batch_execution":True,
+            "checkpoint_directory":args.checkpoint_directory
         }
         evaluation_parameters.update(args.evaluation_arguments)
         if args.verbose:
