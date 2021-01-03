@@ -85,13 +85,13 @@ cfg_evaluation_datasets_classification = {
         "transform":_relation_to_binary_class_wbless,
         "description": "Weeds-BLESS dataset: hyponymy or not",
     },
-    "ENTAILMENT": {
-        "path": os.path.join(DIR_EVALSET, "classification_optional/Baroni2012.all"),
-        "header": False,
+    "WBLESS-ext": {
+        "path": os.path.join(DIR_EVALSET, "classification/AWBLESS.txt.ext"),
+        "header": True,
         "delimiter": "\t",
-        "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3},
-        "transform":_relation_to_binary_class_entailment,
-        "description": "ENTAILMENT dataset[Baroni+ 2012]: hyponymy or not",
+        "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3, "fine_grained_relation": 4},
+        "transform":_relation_to_binary_class_wbless,
+        "description": "Weeds-BLESS dataset with BLESS fine-grained relation: hyponymy or not",
     },
     "BIBLESS": {
         "path": os.path.join(DIR_EVALSET, "classification/ABIBLESS.txt"),
@@ -100,6 +100,22 @@ cfg_evaluation_datasets_classification = {
         "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3},
         "transform":_relation_to_three_classes,
         "description": "BIBLESS relabeled dataset: hyponymy, reverse-hyponymy or other",
+    },
+    "BIBLESS-ext": {
+        "path": os.path.join(DIR_EVALSET, "classification/ABIBLESS.txt.ext"),
+        "header": True,
+        "delimiter": "\t",
+        "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3, "fine_grained_relation": 4},
+        "transform":_relation_to_three_classes,
+        "description": "BIBLESS relabeled dataset with BLESS fine-grained relation: hyponymy, reverse-hyponymy or other",
+    },
+    "ENTAILMENT": {
+        "path": os.path.join(DIR_EVALSET, "classification_optional/Baroni2012.all"),
+        "header": False,
+        "delimiter": "\t",
+        "columns": {"hyponym":0, "hypernym":1, "is_hyponymy":2, "relation": 3},
+        "transform":_relation_to_binary_class_entailment,
+        "description": "ENTAILMENT dataset[Baroni+ 2012]: hyponymy or not",
     }
 }
 
