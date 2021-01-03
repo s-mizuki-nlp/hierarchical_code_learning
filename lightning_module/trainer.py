@@ -18,6 +18,8 @@ from torch.nn.modules.loss import _Loss
 from torch.optim import Adam
 import pytorch_lightning as pl
 
+from sam.sam import SAM
+
 from model.autoencoder import MaskedAutoEncoder
 from model.loss_unsupervised import ReconstructionLoss
 from model.loss_supervised import HyponymyScoreLoss, CodeLengthPredictionLoss
@@ -78,6 +80,8 @@ class UnsupervisedTrainer(pl.LightningModule):
     def configure_optimizers(self):
         if self._optimizer_class is None:
             opt = Adam(self.parameters(), lr=self._learning_rate)
+        elif self._optimizer_class.__name__ == "SAM":
+            opt = self._optimizer_class(self.parameters(), Adam, lr=self._learning_rate)
         else:
             opt = self._optimizer_class(params=self.parameters(), lr=self._learning_rate)
         return opt
@@ -462,3 +466,36 @@ class SupervisedTrainer(UnsupervisedTrainer):
     def on_epoch_start(self):
         if self._shuffle_hyponymy_dataset_on_every_epoch:
             self.train_dataloader().dataset.shuffle_hyponymy_dataset()
+
+
+class SupervisedTrainerSAM(SupervisedTrainer):
+
+    def on_sanity_check_start(self):
+        self.configure_optimizers()
+
+    def training_step(self, data_batch, batch_nb):
+        optimizer = self.optimizers[0]
+        assert isinstance(optimizer, SAM), "optimizer must be SAM optimizer class."
+
+        random_seed = np.random.randint(np.iinfo(np.int32).max)
+
+        # first forward-backward pass
+        torch.manual_seed(random_seed)
+        dict_loss = super().training_step(data_batch, batch_nb)
+        dict_loss["loss"].backward()
+        optimizer.first_step(zero_grad=True)
+
+        # second forward-backward pass
+        torch.manual_seed(random_seed)
+        dict_loss = super().training_step(data_batch, batch_nb)
+        dict_loss["loss"].backward()
+        optimizer.second_step(zero_grad=True)
+
+        return dict_loss
+
+    def optimizer_step(self, epoch_nb, batch_nb, optimizer, optimizer_i, second_order_closure=None):
+        # do nothing
+        pass
+
+    def backward(self, use_amp, loss, optimizer):
+        pass
