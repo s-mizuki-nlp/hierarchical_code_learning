@@ -65,12 +65,12 @@ class SimpleEncoder(nn.Module):
         n_ary = self._n_ary
 
         # adjust Pr{Cd=0} using stick-breaking process
-        # probs_zero_*: (n_batch, n_digits, 1)
+        # probs_zero_*: (n_batch, 1)
         probs_zero = torch.index_select(probs, dim=-1, index=torch.tensor(0, device=device))
         probs_zero_prev = torch.index_select(probs_prev, dim=-1, index=torch.tensor(0, device=device))
         probs_zero_adj = probs_zero_prev + (1.0 - probs_zero_prev)*probs_zero
 
-        # probs_nonzero_*: (n_batch, n_digits, n_ary-1)
+        # probs_nonzero_*: (n_batch, n_ary-1)
         probs_nonzero = torch.index_select(probs, dim=-1, index=torch.arange(1, n_ary, dtype=torch.long, device=device))
         adjust_factor = (1.0 - probs_zero_adj) / ((1.0 - probs_zero) + 1E-6)
         probs_nonzero_adj = adjust_factor * probs_nonzero
