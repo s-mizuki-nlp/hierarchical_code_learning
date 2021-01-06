@@ -6,7 +6,7 @@ from __future__ import division
 from __future__ import print_function
 
 import warnings
-from typing import List, Optional, Dict, Any, Union
+from typing import Optional, Dict, Any, Union
 import copy
 import inspect
 import torch
@@ -55,6 +55,30 @@ class SimpleEncoder(nn.Module):
     @property
     def use_built_in_discretizer(self):
         return False
+
+    def _adjust_code_probability_to_monotone_increasing(self, probs: torch.Tensor, probs_prev: Union[None, torch.Tensor]):
+        # if Pr{C_{d-1}} is not given, we don't adjust the probability.
+        if probs_prev is None:
+            return probs
+
+        dtype, device = self._dtype_and_device(probs)
+        n_ary = self._n_ary
+
+        # adjust Pr{Cd=0} using stick-breaking process
+        # probs_zero_*: (n_batch, n_digits, 1)
+        probs_zero = torch.index_select(probs, dim=-1, index=torch.tensor(0, device=device))
+        probs_zero_prev = torch.index_select(probs_prev, dim=-1, index=torch.tensor(0, device=device))
+        probs_zero_adj = probs_zero_prev + (1.0 - probs_zero_prev)*probs_zero
+
+        # probs_nonzero_*: (n_batch, n_digits, n_ary-1)
+        probs_nonzero = torch.index_select(probs, dim=-1, index=torch.arange(1, n_ary, dtype=torch.long, device=device))
+        adjust_factor = (1.0 - probs_zero_adj) / ((1.0 - probs_zero) + 1E-6)
+        probs_nonzero_adj = adjust_factor * probs_nonzero
+
+        # concatenate adjusted probabilities
+        probs_adj = torch.cat((probs_zero_adj, probs_nonzero_adj), dim=-1)
+
+        return probs_adj
 
 
 class CodeLengthAwareEncoder(SimpleEncoder):
@@ -328,30 +352,6 @@ class AutoRegressiveLSTMEncoder(SimpleEncoder):
 
         return h_t, c_t, e_t
 
-    def _adjust_code_probability_to_monotone_increasing(self, probs: torch.Tensor, probs_prev: Union[None, torch.Tensor]):
-        # if Pr{C_{d-1}} is not given, we don't adjust the probability.
-        if probs_prev is None:
-            return probs
-
-        dtype, device = self._dtype_and_device(probs)
-        n_ary = self._n_ary
-
-        # adjust Pr{Cd=0} using stick-breaking process
-        # probs_zero_*: (n_batch, n_digits, 1)
-        probs_zero = torch.index_select(probs, dim=-1, index=torch.tensor(0, device=device))
-        probs_zero_prev = torch.index_select(probs_prev, dim=-1, index=torch.tensor(0, device=device))
-        probs_zero_adj = probs_zero_prev + (1.0 - probs_zero_prev)*probs_zero
-
-        # probs_nonzero_*: (n_batch, n_digits, n_ary-1)
-        probs_nonzero = torch.index_select(probs, dim=-1, index=torch.arange(1, n_ary, dtype=torch.long, device=device))
-        adjust_factor = (1.0 - probs_zero_adj) / ((1.0 - probs_zero) + 1E-6)
-        probs_nonzero_adj = adjust_factor * probs_nonzero
-
-        # concatenate adjusted probabilities
-        probs_adj = torch.cat((probs_zero_adj, probs_nonzero_adj), dim=-1)
-
-        return probs_adj
-
     def forward(self, input_x: torch.Tensor, on_inference: bool = False):
         dtype, device = self._dtype_and_device(input_x)
         n_batch = input_x.shape[0]
@@ -466,6 +466,7 @@ class TransformerEncoder(SimpleEncoder):
                  n_dim_emb_digits: Optional[int] = None,
                  time_distributed: bool = True,
                  how_digit_embeddings: str = "add",
+                 prob_zero_monotone_increasing: bool = False,
                  dtype=torch.float32,
                  **kwargs):
 
@@ -482,6 +483,7 @@ class TransformerEncoder(SimpleEncoder):
         self._time_distributed = time_distributed
         self._how_digit_embeddings = how_digit_embeddings
         self._normalize_digit_embeddings = normalize_digit_embeddings
+        self._prob_zero_monotone_increasing = prob_zero_monotone_increasing
 
         self._build()
 
@@ -558,10 +560,19 @@ class TransformerEncoder(SimpleEncoder):
         # compute Pr{c_d}
         # t_prob_c: (n_batch, n_digits, n_ary)
         if self._time_distributed:
-            t_prob_c = F.softmax(self._prediction_layer(h_out), dim=-1)
+            lst_prob_c = [F.softmax(self._prediction_layer(h_out[:,idx_d,:]), dim=-1) for idx_d in range(self._n_digits)]
         else:
             lst_prob_c = [F.softmax(layer(h_out[:,idx_d,:]), dim=-1) for idx_d, layer in enumerate(self._prediction_layer)]
-            t_prob_c = torch.stack(lst_prob_c, dim=1)
+
+        # adjust Pr{c_d=d|c_{<d}} so that Pr{c_d=0|c_{<d+1}} satisfies monotone increasing condition.
+        if self._prob_zero_monotone_increasing:
+            for d in range(self._n_digits):
+                prob_c_prev = lst_prob_c[d-1] if d > 0 else None
+                t_prob_c_d = lst_prob_c[d]
+                lst_prob_c[d] = self._adjust_code_probability_to_monotone_increasing(probs=t_prob_c_d, probs_prev=prob_c_prev)
+
+        # stack each digits
+        t_prob_c = torch.stack(lst_prob_c, dim=1)
 
         return t_prob_c
 
