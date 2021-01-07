@@ -318,12 +318,30 @@ class HyponymyScoreLoss(CodeLengthPredictionLoss):
 
     def calc_synonym_probability(self, t_prob_c_x: torch.Tensor, t_prob_c_y: torch.Tensor):
 
-        # t_gamma: (n_batch, n_digits)
-        # t_gamma[b][d] = \sum_{a}(p_x(C_d=a)*p_y(C_d=a))
-        t_gamma = torch.sum(t_prob_c_x*t_prob_c_y, dim=-1)
-        # t_prob: (n_batch,)
-        # t_prob[b] = \prod_{d}t_gamma[b][d]
-        t_prob = torch.prod(t_gamma, dim=-1)
+        n_digits, n_ary = t_prob_c_x.shape[-2:]
+        dtype, device = self._dtype_and_device(t_prob_c_x)
+
+        # t_p_c_*_zero: (n_batch, n_digits)
+        idx_zero = torch.tensor(0, device=t_prob_c_x.device)
+        t_p_c_x_zero = torch.index_select(t_prob_c_x, dim=-1, index=idx_zero).squeeze()
+        t_p_c_y_zero = torch.index_select(t_prob_c_y, dim=-1, index=idx_zero).squeeze()
+
+        # t_gamma_hat: (n_batch, n_digits)
+        t_gamma_hat = torch.sum(t_prob_c_x*t_prob_c_y, dim=-1) - t_p_c_x_zero*t_p_c_y_zero
+        # prepend 1.0 at the beginning
+        # pad_shape: (n_batch, 1)
+        pad_shape = t_gamma_hat.shape[:-1] + (1,)
+        t_pad_ones = torch.ones(pad_shape, dtype=dtype, device=device)
+        # t_gamma: (n_batch, n_digits+1)
+        t_gamma = torch.cat((t_pad_ones, t_gamma_hat), dim=-1)
+
+        # t_delta: (n_batch, n_digits)
+        t_delta_hat = t_p_c_x_zero*t_p_c_y_zero
+        # append 1.0 at the end.
+        t_delta = torch.cat((t_delta_hat, t_pad_ones), dim=-1)
+
+        # t_prob: (n_batch)
+        t_prob = torch.sum(t_delta*torch.cumprod(t_gamma, dim=-1), dim=-1)
 
         return t_prob
 
