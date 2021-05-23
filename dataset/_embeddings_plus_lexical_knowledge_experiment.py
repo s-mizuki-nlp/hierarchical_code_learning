@@ -76,7 +76,8 @@ class WordEmbeddingsAndHyponymyDatasetWithNonHyponymyRelation(WordEmbeddingsAndH
         ## (optional) pre-build negative(=non-hyponymy, non-synonymy) nearest neighbors using word embeddings dataset.
         if negative_sampling_from_nearest_neighbors is not None:
             cfg = {} if kwargs_nearest_neighbor_search is None else kwargs_nearest_neighbor_search
-            self._taxonomy.prebuild_negative_nearest_neighbors(word_embeddings_dataset, top_k=cfg.get("top_k",None), top_q=cfg.get("top_q",None))
+            self._taxonomy.prebuild_negative_nearest_neighbors(word_embeddings_dataset, top_k=cfg.get("top_k",None), top_q=cfg.get("top_q",None),
+                                                               force_cache_file_name=cfg.get("force_cache_file_name",None))
 
         # set values
         self._word_embeddings_dataset = word_embeddings_dataset

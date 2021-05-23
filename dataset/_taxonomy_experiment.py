@@ -256,7 +256,8 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
 
     def prebuild_negative_nearest_neighbors(self, word_embeddings_dataset: AbstractWordEmbeddingsDataset,
                                             top_k: Optional[int] = None, top_q: Optional[float] = None,
-                                            use_cache: bool = True, cache_dir: str = "./_cache/"):
+                                            use_cache: bool = True, cache_dir: str = "./_cache/",
+                                            force_cache_file_name: str = None):
         print(f"lookup negative nearest neighbors...")
 
         # intialize internal attribute
@@ -265,7 +266,10 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
             self._trainset_negative_nearest_neighbors[entity_type] = {}
 
         if use_cache:
-            cache_file_name = "_".join(map(str, [hash(self), hash(word_embeddings_dataset), top_k, top_q]))
+            if isinstance(force_cache_file_name, str):
+                cache_file_name = force_cache_file_name
+            else:
+                cache_file_name = "_".join(map(str, [hash(self), hash(word_embeddings_dataset), top_k, top_q]))
             path = os.path.join(cache_dir, cache_file_name)
             if os.path.exists(path):
                 print(f"load from the cache file:{path}")
