@@ -14,9 +14,10 @@ _distance_str_to_float = FieldTypeConverter(dict_field_type_converter={"distance
 _exclude_top_synsets = DictionaryFilter(excludes={"synset_hypernym":set(SYNSETS_DEPTH_UP_TO_SECOND_LEVEL)})
 _exclude_synonymy_relations = DictionaryFilter(excludes={"distance":{0,"0"}})
 # 上位下位関係のホップ数を制約 かつ synonymを除外
-_include_direct_hyponymies = DictionaryFilter(includes={"distance":{"1",}})
-_include_hyponymies_up_to_three = DictionaryFilter(includes={"distance":{"1","2","3"}})
-_include_hyponymies_up_to_five = DictionaryFilter(includes={"distance":{"1","2","3","4","5"}})
+_include_direct_hyponymies = DictionaryFilter(includes={"distance":set("1")})
+_include_hyponymies_up_to_three = DictionaryFilter(includes={"distance":set("123")})
+_include_hyponymies_up_to_five = DictionaryFilter(includes={"distance":set("12345")})
+_include_hyponymies_up_to_seven = DictionaryFilter(includes={"distance":set("1234567")})
 
 DIR_LEXICAL_KNOWLEDGE = "/home/sakae/Windows/dataset/hypernym_detection/wordnet_nguyen_2017/"
 DIR_LEXICAL_KNOWLEDGE_VER2 = "/home/sakae/Windows/dataset/hypernym_detection/wordnet_nguyen_2017_ver2/"
@@ -109,6 +110,15 @@ cfg_hyponymy_relation_datasets = {
         "columns": {"hyponym":0, "hypernym":1, "distance":2, "pos":3, "synset_hyponym":4, "synset_hypernym":5},
         "transform": _distance_str_to_float,
         "filter": _include_hyponymies_up_to_five,
+        "description": "WordNet hyponymy relation dataset ver2(=excludes duplicate in xBLESS relation): noun and verb. limit hypponymy with 1<=n_hop<=5.",
+    },
+        "WordNet-hyponymy-noun-verb-ver2-seven_hop": {
+        "path": os.path.join(DIR_LEXICAL_KNOWLEDGE_VER2, "lexical_knowledge_wordnet_hyponymy_synonymy_noun_verb_valid_case_sensitive.txt"),
+        "header": True,
+        "delimiter": "\t",
+        "columns": {"hyponym":0, "hypernym":1, "distance":2, "pos":3, "synset_hyponym":4, "synset_hypernym":5},
+        "transform": _distance_str_to_float,
+        "filter": _include_hyponymies_up_to_seven,
         "description": "WordNet hyponymy relation dataset ver2(=excludes duplicate in xBLESS relation): noun and verb. limit hypponymy with 1<=n_hop<=5.",
     }
 }
