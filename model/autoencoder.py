@@ -13,6 +13,21 @@ from torch import nn
 from torch.nn import functional as F
 from contextlib import ExitStack
 
+
+def _fill_trailing_nonzero_values(vec_code: np.array):
+    vec_idx = np.where(vec_code == 0)[0]
+    if len(vec_idx) > 0:
+        idx = np.min(vec_idx)
+        vec_code[idx:] = 0
+    return vec_code
+
+def _fill_trailing_nonzero_values_matrix(mat_codes: np.array):
+    n_size, _ = mat_codes.shape
+    it = np.apply_along_axis(_fill_trailing_nonzero_values, 1, arr=mat_codes)
+    ret = np.hstack(it).reshape(n_size, -1)
+    return ret
+
+
 class AutoEncoder(nn.Module):
 
     def __init__(self, encoder: nn.Module, decoder: nn.Module, discretizer: nn.Module, normalize_output_length: bool = False, dtype=torch.float32, **kwargs):
@@ -135,14 +150,19 @@ class AutoEncoder(nn.Module):
         t_code = torch.argmax(t_code_prob, dim=2, keepdim=False)
         return t_code
 
-    def encode(self, mat_x: np.ndarray, **kwargs):
+    def encode(self, mat_x: np.ndarray, fill_trailing_nonzero_values: bool = False, **kwargs):
 
         with ExitStack() as context_stack:
             context_stack.enter_context(torch.no_grad())
             t_x = self._numpy_to_tensor(mat_x)
             t_code = self._encode(t_x, **kwargs)
 
-        return t_code.cpu().numpy()
+        mat_codes = t_code.cpu().numpy()
+
+        if fill_trailing_nonzero_values:
+            mat_codes = _fill_trailing_nonzero_values_matrix(mat_codes)
+
+        return mat_codes
 
     def _encode_soft(self, t_x: torch.Tensor, **kwargs):
         t_code_prob = self._encoder.calc_code_probability(t_x, **kwargs)
