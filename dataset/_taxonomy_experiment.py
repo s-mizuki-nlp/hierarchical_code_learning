@@ -25,10 +25,16 @@ class BasicHyponymyPairSet(object):
 
     def __init__(self, hyponymy_dataset: HyponymyDataset):
 
+        self._num_hyponymy_pairs = len(hyponymy_dataset)
+
         # build taxonomy as a DAG
         iter_hyponymy_pairs = ((record["hypernym"], record["hyponym"], record["distance"]) for record in hyponymy_dataset)
         self.record_ancestors_and_descendants(iter_hyponymy_pairs)
         self._random_number_generator = self._random_number_generator_iterator(max_value=self.n_nodes_max)
+
+    @property
+    def num_hyponymy_pairs(self):
+        return self._num_hyponymy_pairs
 
     @property
     def nodes(self):
@@ -204,6 +210,8 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
 
     def __init__(self, hyponymy_dataset: HyponymyDataset):
 
+        self._num_hyponymy_pairs = len(hyponymy_dataset)
+
         # build taxonomy as for each part-of-speech tags as DAG
         dict_iter_trainset_pairs = defaultdict(list)
         for record in hyponymy_dataset:
@@ -215,6 +223,10 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
 
         self.record_ancestors_and_descendants(dict_iter_trainset_pairs)
         self._random_number_generator = self._random_number_generator_iterator(max_value=self.n_nodes_max)
+
+    @property
+    def num_hyponymy_pairs(self):
+        return self._num_hyponymy_pairs
 
     def __hash__(self):
         # compute persistent hash using nodes in the taxonomy.
@@ -269,7 +281,9 @@ class WordNetHyponymyPairSet(BasicHyponymyPairSet):
             if isinstance(force_cache_file_name, str):
                 cache_file_name = force_cache_file_name
             else:
-                cache_file_name = "_".join(map(str, [hash(self), hash(word_embeddings_dataset), top_k, top_q]))
+                # id seeds: [hash(set of nodes), # of hyponymy pairs, hash(word embeddings), top_k, top_q]
+                lst_id_seeds = [hash(self), self.num_hyponymy_pairs, hash(word_embeddings_dataset), top_k, top_q]
+                cache_file_name = "_".join(map(str, lst_id_seeds))
             path = os.path.join(cache_dir, cache_file_name)
             if os.path.exists(path):
                 print(f"load from the cache file:{path}")
