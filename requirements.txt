@@ -1,6 +1,6 @@
 pydash
 entmax==1.0
 pytorch==1.2.0
-pytorch-lightning==0.5.3
+pytorch-lightning==1.6.0
 networkx==2.4
 nltk==3.9
